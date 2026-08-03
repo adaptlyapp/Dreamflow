@@ -1,0 +1,19 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "resource_suggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "submittedByUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

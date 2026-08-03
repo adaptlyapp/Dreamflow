@@ -1,0 +1,677 @@
+{
+  "patient": {
+    "id": "user_sarah_001",
+    "name": "Sarah Johnson",
+    "email": "sarah.johnson@email.com",
+    "profileImageUrl": "https://i.pravatar.cc/150?img=47",
+    "patientCode": "MH-2847",
+    "onboardingCompleted": true,
+    "conditions": ["spinal_cord_injury"],
+    "diagnosisDate": "2022-03-15T00:00:00Z",
+    "interests": ["adaptive_sports", "mental_health", "mobility", "peer_support"],
+    "preferences": {
+      "hospitalId": "mass_general",
+      "hospitalName": "Massachusetts General Hospital",
+      "notificationsEnabled": true,
+      "darkMode": true,
+      "privacyLevel": "friends"
+    },
+    "createdAt": "2022-04-01T10:30:00Z",
+    "updatedAt": "2024-01-15T14:22:00Z",
+    "stats": {
+      "memberSince": "April 2022",
+      "totalTrackerEntries": 156,
+      "activeGoals": 4,
+      "completedGoals": 12,
+      "achievementsEarned": 8,
+      "communityPosts": 23,
+      "resourcesAccessed": 34,
+      "currentStreak": 7
+    }
+  },
+
+  "conditions": [
+    {
+      "id": "spinal_cord_injury",
+      "name": "Spinal Cord Injury (T6 Complete)",
+      "description": "Complete spinal cord injury at the T6 vertebral level, affecting movement and sensation below the chest.",
+      "symptoms": [
+        "Paraplegia (paralysis of legs)",
+        "Loss of sensation below injury level",
+        "Bladder and bowel dysfunction",
+        "Autonomic dysreflexia risk",
+        "Spasticity in lower extremities"
+      ],
+      "dailyAdjustments": [
+        "Manual wheelchair use for mobility",
+        "Intermittent catheterization every 4-6 hours",
+        "Daily skin checks for pressure sores",
+        "Range of motion exercises",
+        "Bowel management program"
+      ],
+      "resources": ["resource_001", "resource_002", "resource_003"],
+      "aiGenerated": false,
+      "timeline": {
+        "week1": "Focus on acute medical stabilization, pain management, and preventing complications. Begin education about injury level.",
+        "month1": "Start intensive rehabilitation. Learn wheelchair skills, transfers, and basic self-care. Address emotional adjustment.",
+        "month3": "Achieve independence in daily activities. Establish bladder/bowel routines. Prepare for community reintegration.",
+        "longTerm": "Maintain health through exercise and medical monitoring. Adapt home/work environments. Build peer support network."
+      },
+      "relatedGroups": ["group_sci_support", "group_wheelchair_athletes"],
+      "diagnosedDate": "2022-03-15T00:00:00Z",
+      "severity": "Complete",
+      "currentPhase": "Long-term management",
+      "createdAt": "2022-04-01T10:30:00Z",
+      "updatedAt": "2024-01-15T14:22:00Z"
+    }
+  ],
+
+  "trackerEntries": [
+    {
+      "id": "entry_001",
+      "userId": "user_sarah_001",
+      "date": "2024-01-15T08:00:00Z",
+      "painLevel": 3,
+      "mood": "Good",
+      "spasmFrequency": 2,
+      "bladderSuccess": true,
+      "bowelProgram": true,
+      "sleepQuality": 7,
+      "energyLevel": 8,
+      "systolicBP": 118,
+      "diastolicBP": 76,
+      "heartRate": 68,
+      "steps": null,
+      "notes": "Great morning! PT session went well. Minimal spasms during transfers.",
+      "createdAt": "2024-01-15T08:15:00Z",
+      "updatedAt": "2024-01-15T08:15:00Z"
+    },
+    {
+      "id": "entry_002",
+      "userId": "user_sarah_001",
+      "date": "2024-01-14T08:00:00Z",
+      "painLevel": 5,
+      "mood": "Fair",
+      "spasmFrequency": 4,
+      "bladderSuccess": true,
+      "bowelProgram": true,
+      "sleepQuality": 5,
+      "energyLevel": 6,
+      "systolicBP": 122,
+      "diastolicBP": 78,
+      "heartRate": 72,
+      "steps": null,
+      "notes": "Increased spasms today, possibly due to weather change. Pain in left shoulder from overuse.",
+      "createdAt": "2024-01-14T08:30:00Z",
+      "updatedAt": "2024-01-14T08:30:00Z"
+    },
+    {
+      "id": "entry_003",
+      "userId": "user_sarah_001",
+      "date": "2024-01-13T08:00:00Z",
+      "painLevel": 2,
+      "mood": "Excellent",
+      "spasmFrequency": 1,
+      "bladderSuccess": true,
+      "bowelProgram": true,
+      "sleepQuality": 8,
+      "energyLevel": 9,
+      "systolicBP": 116,
+      "diastolicBP": 74,
+      "heartRate": 65,
+      "steps": null,
+      "notes": "Feeling strong! Completed 30 min wheelchair basketball practice. No AD episodes.",
+      "createdAt": "2024-01-13T08:20:00Z",
+      "updatedAt": "2024-01-13T08:20:00Z"
+    },
+    {
+      "id": "entry_004",
+      "userId": "user_sarah_001",
+      "date": "2024-01-12T08:00:00Z",
+      "painLevel": 4,
+      "mood": "Good",
+      "spasmFrequency": 3,
+      "bladderSuccess": false,
+      "bowelProgram": true,
+      "sleepQuality": 6,
+      "energyLevel": 7,
+      "systolicBP": 120,
+      "diastolicBP": 80,
+      "heartRate": 70,
+      "steps": null,
+      "notes": "Had a UTI scare - more frequent catheterization today. Increased fluid intake.",
+      "createdAt": "2024-01-12T08:45:00Z",
+      "updatedAt": "2024-01-12T08:45:00Z"
+    },
+    {
+      "id": "entry_005",
+      "userId": "user_sarah_001",
+      "date": "2024-01-11T08:00:00Z",
+      "painLevel": 3,
+      "mood": "Good",
+      "spasmFrequency": 2,
+      "bladderSuccess": true,
+      "bowelProgram": true,
+      "sleepQuality": 7,
+      "energyLevel": 8,
+      "systolicBP": 115,
+      "diastolicBP": 75,
+      "heartRate": 67,
+      "steps": null,
+      "notes": "Routine day. Pressure relief every 30 min. Skin looks good.",
+      "createdAt": "2024-01-11T08:25:00Z",
+      "updatedAt": "2024-01-11T08:25:00Z"
+    }
+  ],
+
+  "goals": [
+    {
+      "id": "goal_001",
+      "userId": "user_sarah_001",
+      "title": "Track Daily Health Metrics",
+      "description": "Log pain, mood, and vital signs every morning to identify patterns and share with my care team.",
+      "targetPerPeriod": 7,
+      "progressThisPeriod": 7,
+      "period": "weekly",
+      "lastResetAt": "2024-01-08T00:00:00Z",
+      "linkedTrackerKey": null,
+      "active": true,
+      "status": "On Track",
+      "completionRate": "100%",
+      "createdAt": "2023-09-01T10:00:00Z",
+      "updatedAt": "2024-01-15T08:15:00Z"
+    },
+    {
+      "id": "goal_002",
+      "userId": "user_sarah_001",
+      "title": "Upper Body Strength Training",
+      "description": "Complete 3 wheelchair-adapted strength training sessions per week to prevent shoulder injuries.",
+      "targetPerPeriod": 3,
+      "progressThisPeriod": 2,
+      "period": "weekly",
+      "lastResetAt": "2024-01-08T00:00:00Z",
+      "linkedTrackerKey": "exercise",
+      "active": true,
+      "status": "In Progress",
+      "completionRate": "67%",
+      "createdAt": "2023-10-15T14:30:00Z",
+      "updatedAt": "2024-01-14T16:00:00Z"
+    },
+    {
+      "id": "goal_003",
+      "userId": "user_sarah_001",
+      "title": "Pressure Relief Consistency",
+      "description": "Perform pressure reliefs every 30 minutes while sitting to prevent pressure sores.",
+      "targetPerPeriod": 1,
+      "progressThisPeriod": 1,
+      "period": "weekly",
+      "lastResetAt": "2024-01-08T00:00:00Z",
+      "linkedTrackerKey": "pressure_relief",
+      "active": true,
+      "status": "Completed",
+      "completionRate": "100%",
+      "createdAt": "2023-08-20T09:00:00Z",
+      "updatedAt": "2024-01-11T08:25:00Z"
+    },
+    {
+      "id": "goal_004",
+      "userId": "user_sarah_001",
+      "title": "Connect with Peer Mentor",
+      "description": "Meet with my peer mentor monthly to discuss challenges and share experiences.",
+      "targetPerPeriod": 1,
+      "progressThisPeriod": 0,
+      "period": "weekly",
+      "lastResetAt": "2024-01-08T00:00:00Z",
+      "linkedTrackerKey": null,
+      "active": true,
+      "status": "Pending",
+      "completionRate": "0%",
+      "createdAt": "2023-11-05T11:15:00Z",
+      "updatedAt": "2024-01-08T00:00:00Z"
+    }
+  ],
+
+  "completedGoals": [
+    {
+      "id": "goal_c001",
+      "userId": "user_sarah_001",
+      "title": "Master Independent Transfers",
+      "description": "Complete 50 successful wheelchair-to-bed transfers without assistance.",
+      "completedDate": "2023-06-12T00:00:00Z",
+      "durationDays": 45
+    },
+    {
+      "id": "goal_c002",
+      "userId": "user_sarah_001",
+      "title": "Establish Bladder Routine",
+      "description": "Go 30 days with consistent catheterization schedule and zero UTIs.",
+      "completedDate": "2023-07-20T00:00:00Z",
+      "durationDays": 38
+    },
+    {
+      "id": "goal_c003",
+      "userId": "user_sarah_001",
+      "title": "Return to Work Part-Time",
+      "description": "Successfully work 20 hours per week with adaptive equipment setup.",
+      "completedDate": "2023-09-30T00:00:00Z",
+      "durationDays": 60
+    }
+  ],
+
+  "milestones": [
+    {
+      "id": "milestone_001",
+      "userId": "user_sarah_001",
+      "conditionId": "spinal_cord_injury",
+      "title": "Annual Urodynamic Testing",
+      "description": "Schedule and complete yearly bladder function assessment with urologist.",
+      "dueDate": "2024-03-01T00:00:00Z",
+      "completed": false,
+      "order": 1,
+      "status": "Upcoming",
+      "daysUntil": 45,
+      "createdAt": "2024-01-05T10:00:00Z",
+      "updatedAt": "2024-01-05T10:00:00Z"
+    },
+    {
+      "id": "milestone_002",
+      "userId": "user_sarah_001",
+      "conditionId": "spinal_cord_injury",
+      "title": "Wheelchair Seating Re-evaluation",
+      "description": "Meet with seating specialist to assess current wheelchair fit and prevent pressure injuries.",
+      "dueDate": "2024-02-15T00:00:00Z",
+      "completed": false,
+      "order": 2,
+      "status": "Due Soon",
+      "daysUntil": 30,
+      "createdAt": "2023-12-20T14:30:00Z",
+      "updatedAt": "2023-12-20T14:30:00Z"
+    },
+    {
+      "id": "milestone_003",
+      "userId": "user_sarah_001",
+      "conditionId": "spinal_cord_injury",
+      "title": "DEXA Bone Density Scan",
+      "description": "Complete bone density screening to monitor for osteoporosis post-SCI.",
+      "dueDate": "2024-01-10T00:00:00Z",
+      "completed": true,
+      "order": 3,
+      "status": "Completed",
+      "completedDate": "2024-01-09T11:00:00Z",
+      "createdAt": "2023-11-15T09:00:00Z",
+      "updatedAt": "2024-01-09T11:15:00Z"
+    },
+    {
+      "id": "milestone_004",
+      "userId": "user_sarah_001",
+      "conditionId": "spinal_cord_injury",
+      "title": "Adaptive Sports Workshop",
+      "description": "Attend wheelchair basketball clinic to learn techniques and meet other athletes.",
+      "dueDate": "2024-04-20T00:00:00Z",
+      "completed": false,
+      "order": 4,
+      "status": "Planned",
+      "daysUntil": 95,
+      "createdAt": "2024-01-12T16:00:00Z",
+      "updatedAt": "2024-01-12T16:00:00Z"
+    }
+  ],
+
+  "achievements": [
+    {
+      "achievementId": "ach_001",
+      "title": "First Steps",
+      "description": "Log your first health tracker entry",
+      "icon": "flag",
+      "category": "health",
+      "tier": 1,
+      "requirement": 1,
+      "progress": 1,
+      "unlocked": true,
+      "unlockedAt": "2022-04-02T08:30:00Z",
+      "points": 10
+    },
+    {
+      "achievementId": "ach_002",
+      "title": "Week Warrior",
+      "description": "Log entries for 7 consecutive days",
+      "icon": "whatshot",
+      "category": "health",
+      "tier": 2,
+      "requirement": 7,
+      "progress": 7,
+      "unlocked": true,
+      "unlockedAt": "2022-05-15T09:00:00Z",
+      "points": 25
+    },
+    {
+      "achievementId": "ach_003",
+      "title": "Century Club",
+      "description": "Complete 100 tracker entries",
+      "icon": "emoji_events",
+      "category": "health",
+      "tier": 3,
+      "requirement": 100,
+      "progress": 156,
+      "unlocked": true,
+      "unlockedAt": "2023-08-22T14:30:00Z",
+      "points": 50
+    },
+    {
+      "achievementId": "ach_004",
+      "title": "Social Butterfly",
+      "description": "Create your first community post",
+      "icon": "chat",
+      "category": "social",
+      "tier": 1,
+      "requirement": 1,
+      "progress": 23,
+      "unlocked": true,
+      "unlockedAt": "2022-04-10T15:45:00Z",
+      "points": 10
+    },
+    {
+      "achievementId": "ach_005",
+      "title": "Goal Setter",
+      "description": "Create 3 personal health goals",
+      "icon": "track_changes",
+      "category": "goals",
+      "tier": 2,
+      "requirement": 3,
+      "progress": 16,
+      "unlocked": true,
+      "unlockedAt": "2023-09-01T10:00:00Z",
+      "points": 25
+    },
+    {
+      "achievementId": "ach_006",
+      "title": "Goal Crusher",
+      "description": "Complete 10 goals",
+      "icon": "check_circle",
+      "category": "goals",
+      "tier": 3,
+      "requirement": 10,
+      "progress": 12,
+      "unlocked": true,
+      "unlockedAt": "2023-11-20T16:30:00Z",
+      "points": 50
+    },
+    {
+      "achievementId": "ach_007",
+      "title": "Knowledge Seeker",
+      "description": "Access 10 educational resources",
+      "icon": "school",
+      "category": "learning",
+      "tier": 2,
+      "requirement": 10,
+      "progress": 34,
+      "unlocked": true,
+      "unlockedAt": "2022-06-18T11:15:00Z",
+      "points": 25
+    },
+    {
+      "achievementId": "ach_008",
+      "title": "Long Hauler",
+      "description": "Active member for 1 year",
+      "icon": "cake",
+      "category": "consistency",
+      "tier": 3,
+      "requirement": 365,
+      "progress": 654,
+      "unlocked": true,
+      "unlockedAt": "2023-04-01T00:00:00Z",
+      "points": 100
+    },
+    {
+      "achievementId": "ach_009",
+      "title": "Consistency King",
+      "description": "Maintain a 30-day streak",
+      "icon": "local_fire_department",
+      "category": "consistency",
+      "tier": 4,
+      "requirement": 30,
+      "progress": 7,
+      "unlocked": false,
+      "unlockedAt": null,
+      "points": 150
+    }
+  ],
+
+  "communityActivity": {
+    "totalPosts": 23,
+    "totalComments": 67,
+    "totalLikes": 142,
+    "communitiesJoined": 3,
+    "recentPosts": [
+      {
+        "id": "post_001",
+        "authorId": "user_sarah_001",
+        "authorName": "Sarah Johnson",
+        "authorImageUrl": "https://i.pravatar.cc/150?img=47",
+        "content": "Just completed my first wheelchair basketball practice! 🏀 Anyone else play adaptive sports? Would love to connect and share tips!",
+        "mediaUrl": null,
+        "mediaType": null,
+        "communityId": "group_wheelchair_athletes",
+        "type": "discussion",
+        "relatedConditions": ["spinal_cord_injury"],
+        "likesCount": 24,
+        "commentsCount": 8,
+        "isLiked": true,
+        "createdAt": "2024-01-13T18:30:00Z",
+        "updatedAt": "2024-01-13T18:30:00Z"
+      },
+      {
+        "id": "post_002",
+        "authorId": "user_sarah_001",
+        "authorName": "Sarah Johnson",
+        "authorImageUrl": "https://i.pravatar.cc/150?img=47",
+        "content": "PSA: Don't ignore even minor autonomic dysreflexia symptoms! Had a close call today. Check your catheter, check for pressure points, and never hesitate to call your doctor.",
+        "mediaUrl": null,
+        "mediaType": null,
+        "communityId": "group_sci_support",
+        "type": "advice",
+        "relatedConditions": ["spinal_cord_injury"],
+        "likesCount": 45,
+        "commentsCount": 12,
+        "isLiked": true,
+        "createdAt": "2024-01-05T14:15:00Z",
+        "updatedAt": "2024-01-05T14:15:00Z"
+      },
+      {
+        "id": "post_003",
+        "authorId": "user_sarah_001",
+        "authorName": "Sarah Johnson",
+        "authorImageUrl": "https://i.pravatar.cc/150?img=47",
+        "content": "Celebrating 6 months without a pressure sore! Consistent relief every 30 min really works. Here's my routine if anyone needs tips...",
+        "mediaUrl": null,
+        "mediaType": null,
+        "communityId": "group_sci_support",
+        "type": "milestone",
+        "relatedConditions": ["spinal_cord_injury"],
+        "likesCount": 38,
+        "commentsCount": 15,
+        "isLiked": true,
+        "createdAt": "2023-12-28T10:45:00Z",
+        "updatedAt": "2023-12-28T10:45:00Z"
+      }
+    ]
+  },
+
+  "resources": {
+    "recentlyAccessed": [
+      {
+        "id": "resource_001",
+        "name": "Spaulding Rehabilitation Hospital",
+        "type": "Rehabilitation Center",
+        "specialty": ["Spinal Cord Injury", "Physical Therapy", "Occupational Therapy"],
+        "location": "Charlestown, MA",
+        "address": "300 1st Ave, Charlestown, MA 02129",
+        "distance": 2.3,
+        "lat": 42.372,
+        "lng": -71.066,
+        "contactPhone": "(617) 573-7000",
+        "contactEmail": "info@spauldingrehab.org",
+        "website": "https://spauldingrehab.org",
+        "availability": "Mon-Fri 8AM-6PM",
+        "rating": 4.8,
+        "reviewCount": 156,
+        "lastAccessedDate": "2024-01-10T14:30:00Z",
+        "bookmarked": true,
+        "createdAt": "2022-01-15T10:00:00Z",
+        "updatedAt": "2024-01-10T14:30:00Z"
+      },
+      {
+        "id": "resource_002",
+        "name": "Boston SCI Support Group",
+        "type": "Support Group",
+        "specialty": ["Peer Support", "Mental Health", "Community"],
+        "location": "Boston, MA",
+        "address": "Virtual & In-Person Meetings",
+        "distance": 0.0,
+        "lat": null,
+        "lng": null,
+        "contactPhone": null,
+        "contactEmail": "contact@bostonsci.org",
+        "website": "https://bostonsci.org",
+        "availability": "Monthly meetings, 2nd Tuesday 7PM",
+        "rating": 4.9,
+        "reviewCount": 89,
+        "lastAccessedDate": "2024-01-08T19:00:00Z",
+        "bookmarked": true,
+        "createdAt": "2022-02-01T09:00:00Z",
+        "updatedAt": "2024-01-08T19:00:00Z"
+      },
+      {
+        "id": "resource_003",
+        "name": "Adaptive Sports New England",
+        "type": "Sports & Recreation",
+        "specialty": ["Wheelchair Sports", "Adaptive Recreation", "Fitness"],
+        "location": "Multiple Locations",
+        "address": "26 Rogers St, Needham, MA 02492",
+        "distance": 8.5,
+        "lat": 42.283,
+        "lng": -71.239,
+        "contactPhone": "(781) 444-6533",
+        "contactEmail": "info@adaptivesportsne.org",
+        "website": "https://adaptivesportsne.org",
+        "availability": "Year-round programs",
+        "rating": 5.0,
+        "reviewCount": 72,
+        "lastAccessedDate": "2024-01-13T16:00:00Z",
+        "bookmarked": true,
+        "createdAt": "2022-03-10T11:00:00Z",
+        "updatedAt": "2024-01-13T16:00:00Z"
+      }
+    ],
+    "totalAccessedCount": 34,
+    "bookmarkedCount": 12,
+    "appliedPrograms": [
+      {
+        "id": "app_001",
+        "resourceName": "Wheelchair Basketball League",
+        "status": "Approved",
+        "appliedDate": "2023-12-15T10:00:00Z",
+        "responseDate": "2023-12-20T14:30:00Z",
+        "notes": "Accepted for spring 2024 season. Practices start March 1st."
+      }
+    ]
+  },
+
+  "privacySettings": {
+    "dataSharing": {
+      "shareWithCareTeam": true,
+      "shareWithResearchers": false,
+      "anonymousAnalytics": true
+    },
+    "visibility": {
+      "profilePublic": false,
+      "showInDirectory": true,
+      "allowMessaging": "friends"
+    },
+    "notifications": {
+      "email": true,
+      "push": true,
+      "weeklyDigest": true
+    }
+  },
+
+  "auditLog": [
+    {
+      "id": "log_001",
+      "action": "record_accessed",
+      "accessor": "Dr. Emily Chen",
+      "accessorRole": "Physiatrist",
+      "accessorId": "doc_chen_001",
+      "recordType": "tracker_entries",
+      "timestamp": "2024-01-14T09:15:00Z",
+      "ipAddress": "10.5.23.145",
+      "location": "Massachusetts General Hospital"
+    },
+    {
+      "id": "log_002",
+      "action": "record_exported",
+      "accessor": "Sarah Johnson",
+      "accessorRole": "Patient",
+      "accessorId": "user_sarah_001",
+      "recordType": "full_health_record",
+      "timestamp": "2024-01-10T16:22:00Z",
+      "ipAddress": "73.12.45.201",
+      "location": "Home"
+    },
+    {
+      "id": "log_003",
+      "action": "record_accessed",
+      "accessor": "Mike Rodriguez PT",
+      "accessorRole": "Physical Therapist",
+      "accessorId": "pt_mike_001",
+      "recordType": "goals",
+      "timestamp": "2024-01-08T13:45:00Z",
+      "ipAddress": "10.5.23.146",
+      "location": "Spaulding Rehab"
+    }
+  ],
+
+  "summary": {
+    "healthStatus": "Stable - Long-term Management",
+    "riskAlerts": [
+      {
+        "type": "warning",
+        "title": "Overdue Urodynamic Testing",
+        "description": "Annual bladder assessment due in 45 days. Schedule appointment with urology.",
+        "priority": "medium",
+        "dueDate": "2024-03-01T00:00:00Z"
+      }
+    ],
+    "recentTrends": {
+      "painLevel": {
+        "current": 3,
+        "trend": "stable",
+        "weeklyAverage": 3.4
+      },
+      "mood": {
+        "current": "Good",
+        "trend": "improving",
+        "positivePercentage": 82
+      },
+      "spasms": {
+        "current": 2,
+        "trend": "decreasing",
+        "weeklyAverage": 2.4
+      }
+    },
+    "upcomingAppointments": [
+      {
+        "type": "Physical Therapy",
+        "provider": "Mike Rodriguez, PT",
+        "date": "2024-01-17T10:00:00Z",
+        "location": "Spaulding Rehabilitation Hospital"
+      },
+      {
+        "type": "Wheelchair Seating Evaluation",
+        "provider": "Sarah Kim, OTR/L",
+        "date": "2024-02-15T14:00:00Z",
+        "location": "Assistive Technology Center"
+      }
+    ]
+  }
+}

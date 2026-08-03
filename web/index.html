@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+  <!-- Ensure proper scaling and coordinate mapping on mobile/PWA -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Adaptly">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Adaptly</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* Remove default margins and ensure the canvas fills the screen
+       so pointer hit-testing aligns with visuals in PWA mode. */
+    html, body { height: 100%; }
+    body { margin: 0; -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body>
+  <script>
+    // Handle Supabase error redirects BEFORE Flutter loads
+    // Supabase sends errors like /?error=access_denied#error=access_denied&error_code=otp_expired&...
+    // go_router interprets the hash as the path, causing "no routes for location: error=..."
+    (function() {
+      var hash = window.location.hash;
+      var search = window.location.search;
+      
+      // Check if hash contains error params (Supabase format)
+      if (hash && (hash.indexOf('error=') !== -1 || hash.indexOf('error_code=') !== -1)) {
+        // Parse error info from hash (remove leading #)
+        var hashParams = hash.substring(1);
+        var params = new URLSearchParams(hashParams);
+        
+        var errorCode = params.get('error_code') || 'unknown';
+        var errorDesc = params.get('error_description') || 'An error occurred';
+        
+        // Redirect to password reset screen with error info
+        var newUrl = window.location.origin + window.location.pathname + 
+                     '?reset_error=' + encodeURIComponent(errorCode) + 
+                     '&error_description=' + encodeURIComponent(errorDesc);
+        
+        // Use replace to avoid back-button loop
+        window.location.replace(newUrl);
+      }
+      // Also handle query param errors
+      else if (search && (search.indexOf('error=access_denied') !== -1 || search.indexOf('error_code=otp_expired') !== -1)) {
+        var searchParams = new URLSearchParams(search);
+        var errorCode = searchParams.get('error_code') || 'otp_expired';
+        var errorDesc = searchParams.get('error_description') || 'Email link is invalid or has expired';
+        
+        // Clean up the URL and redirect to password reset screen
+        var newUrl = window.location.origin + window.location.pathname + 
+                     '?reset_error=' + encodeURIComponent(errorCode) + 
+                     '&error_description=' + encodeURIComponent(errorDesc);
+        
+        window.location.replace(newUrl);
+      }
+    })();
+    
+    // Auto-close OAuth browser window after callback is processed
+    // This is exposed to Flutter via window.closeOAuthBrowser()
+    window.closeOAuthBrowser = function() {
+      console.log('[OAuth] Attempting to close OAuth browser window...');
+      
+      // Try multiple methods to close the window
+      try {
+        // Method 1: window.close() - works for windows opened by JavaScript
+        window.close();
+        
+        // Method 2: Close the Safari View Controller on iOS (if in iframe/web view)
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.closeWebView) {
+          window.webkit.messageHandlers.closeWebView.postMessage('close');
+        }
+        
+        // Method 3: Signal to parent window (if opened as popup)
+        if (window.opener) {
+          window.opener.postMessage('oauth_complete', '*');
+          window.close();
+        }
+        
+        // Method 4: Redirect to a blank page with auto-close attempt
+        setTimeout(function() {
+          document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;font-family:system-ui;color:#666;"><div style="font-size:48px;margin-bottom:16px;">✓</div><div style="font-size:18px;margin-bottom:8px;">Sign in complete</div><div style="font-size:14px;">You can close this window</div></div>';
+          
+          // Final attempt after showing success message
+          setTimeout(function() {
+            window.close();
+          }, 1000);
+        }, 500);
+        
+        console.log('[OAuth] Close commands executed');
+      } catch (e) {
+        console.log('[OAuth] Error closing window:', e);
+      }
+    };
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

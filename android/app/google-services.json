@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "586562230278",
+    "project_id": "pbapblaxya4oyejmhxd5b9o6za4nbr",
+    "storage_bucket": "pbapblaxya4oyejmhxd5b9o6za4nbr.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:586562230278:android:63182c2aa11509cc378b87",
+        "android_client_info": {
+          "package_name": "com.mycompany.CounterApp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "586562230278-i9fp9qnski5jlfebgd1e06lghge7ldb1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQC9mUBuLJyUUf41p_qwBvTB5UAX0Xv2U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "586562230278-i9fp9qnski5jlfebgd1e06lghge7ldb1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "586562230278-tlejrhfmb5rmg2rh43pa1kchikqht5pu.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mycompany.CounterApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

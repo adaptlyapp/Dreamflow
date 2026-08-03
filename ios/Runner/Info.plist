@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Adaptly</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Adaptly</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+	<key>UIStatusBarHidden</key>
+	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We use your location to show nearby resources relevant to you.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Adaptly continuously syncs your health data from Apple Health to provide real-time insights and tracking.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Adaptly may write health data you choose to log in the app.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.Adaptly.app.healthSync</string>
+		<string>com.Adaptly.app.refresh</string>
+	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Adaptly needs access to your photo library to let you upload images for your health records and profile.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Adaptly uses your location to show nearby healthcare resources and support services relevant to your recovery journey.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Adaptly sends you medication reminders, goal check-ins, family health alerts, and achievement notifications to support your recovery journey.</string>
+	
+	<!-- Deep linking configuration for password reset and OAuth callbacks -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.Adaptly.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.Adaptly.app</string>
+			</array>
+		</dict>
+		<!-- Google Sign-In URL scheme -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.827278485868-27pbbabg8u0nq1ohb7oevg0g38snnrq9</string>
+			</array>
+		</dict>
+	</array>
+	
+	<!-- Universal Links for OAuth callbacks -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:adaptlyapp.com</string>
+	</array>
+</dict>
+</plist>

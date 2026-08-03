@@ -1,0 +1,5 @@
+[functions.openai_chat_proxy]
+# This function is a server-side proxy to OpenAI using the Supabase secret OPENAI_API_KEY.
+# We intentionally disable JWT verification so the Flutter client can call it using only
+# the project's anon key (no session refresh/auth churn, and no go_router extra-loss).
+verify_jwt = false

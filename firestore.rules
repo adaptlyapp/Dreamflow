@@ -1,0 +1,305 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(data) { return isSignedIn() && request.auth.uid == data.userId; }
+    function communityDoc(commId) { return get(/databases/$(database)/documents/communities/$(commId)); }
+    function isCommunityOwnerById(commId) {
+      return isSignedIn() && communityDoc(commId).data.ownerId == request.auth.uid;
+    }
+    // Accepts a document snapshot (e.g., resource or get(...))
+    function isCommunityOwnerDoc(comm) {
+      return isSignedIn() && comm.data.ownerId == request.auth.uid;
+    }
+    // Admin helper (email allowlist)
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email in [
+        "dpaine170014@gmail.com",
+        "adaptlyapp@gmail.com",
+      ];
+    }
+
+    // Users: public read, owner can write their own profile
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isSignedIn() && userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && userId == request.auth.uid;
+
+      // Tracker entries nested under user: private to that user
+      match /tracker_entries/{entryId} {
+        allow read: if isSignedIn() && userId == request.auth.uid;
+        allow create: if isSignedIn() && userId == request.auth.uid;
+        allow update, delete: if isSignedIn() && userId == request.auth.uid;
+      }
+
+      // Milestones nested under user: private to that user
+      match /milestones/{milestoneId} {
+        // Read: only the owner
+        allow read: if isSignedIn() && userId == request.auth.uid;
+
+        // Create: must be the owner and meet minimal schema
+        allow create: if isSignedIn()
+          && userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && (request.resource.data.title is string)
+          && (request.resource.data.order is int)
+          && (request.resource.data.completed is bool);
+
+        // Update: must remain owned by same user; prevent userId/createdAt hijack
+        allow update: if isSignedIn()
+          && userId == request.auth.uid
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.createdAt == resource.data.createdAt;
+
+        // Delete: owner only
+        allow delete: if isSignedIn()
+          && userId == request.auth.uid
+          && resource.data.userId == request.auth.uid;
+      }
+
+      // Achievements nested under user: private to that user
+      match /achievements/{achievementId} {
+        // Read: only the owner
+        allow read: if isSignedIn() && userId == request.auth.uid;
+
+        // Create: must be the owner and meet minimal schema
+        allow create: if isSignedIn()
+          && userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && (request.resource.data.achievementId is string)
+          && (request.resource.data.progress is int)
+          && (request.resource.data.unlocked is bool);
+
+        // Update: must remain owned by same user; allow progress/unlock updates
+        allow update: if isSignedIn()
+          && userId == request.auth.uid
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.achievementId == resource.data.achievementId;
+
+        // Delete: owner only (for cleanup)
+        allow delete: if isSignedIn()
+          && userId == request.auth.uid
+          && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // Posts: public read; author can write; allow like toggles by anyone (limited fields)
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.authorId == request.auth.uid ||
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['likesCount', 'isLiked', 'updatedAt'])
+      );
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // Comments: public read; only author can create/update/delete
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // Goals: private to owner
+    match /goals/{goalId} {
+      allow read: if isOwner(resource.data);
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data) && request.resource.data.userId == resource.data.userId;
+    }
+
+    // Tracker entries (top-level) - legacy path: private to owner
+    match /tracker_entries/{entryId} {
+      allow read: if isOwner(resource.data);
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data) && request.resource.data.userId == resource.data.userId;
+    }
+
+    // Communities (blog hubs) and membership
+    match /communities/{communityId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.privacy in ['open','private'])
+        && (request.resource.data.type in ['interest','condition']);
+
+      allow update: if isSignedIn() && (
+        isCommunityOwnerDoc(resource) || (
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['memberCount','updatedAt']) &&
+          (request.resource.data.memberCount is int) &&
+          (
+            request.resource.data.memberCount == resource.data.memberCount + 1 ||
+            request.resource.data.memberCount == resource.data.memberCount - 1
+          )
+        )
+      );
+
+      allow delete: if isCommunityOwnerDoc(resource);
+
+      match /members/{memberId} {
+        allow read: if isSignedIn() && (
+          memberId == request.auth.uid || isCommunityOwnerById(communityId)
+        );
+
+        allow create: if isSignedIn()
+          && memberId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && (request.resource.data.status in ['approved','pending']);
+
+        allow update: if isSignedIn() && (
+          isCommunityOwnerById(communityId) || (
+            memberId == request.auth.uid &&
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['displayName'])
+          )
+        );
+
+        allow delete: if isSignedIn() && (
+          isCommunityOwnerById(communityId) || memberId == request.auth.uid
+        );
+      }
+    }
+
+    // Resource Suggestions: users create; owners read their own; admins moderate
+    match /resource_suggestions/{id} {
+      allow create: if isSignedIn() && request.resource.data.submittedByUid == request.auth.uid;
+
+      allow read: if isAdmin() || (
+        isSignedIn() && resource.data.submittedByUid == request.auth.uid
+      ) || (resource.data.status == 'approved');
+
+      allow update: if isAdmin() || (
+        request.resource.data.approvalToken == resource.data.approvalToken &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','approvedResourceId','approvedAt','updatedAt'])
+      );
+
+      allow delete: if false;
+    }
+
+    // Curated Resources: public read; admin writes
+    match /resources_curated/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Firebase Trigger Email extension mailbox: write-only by signed-in clients
+    match /mail/{document=**} {
+      allow read: if false;
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // Hospitals: public read so users can theme/select their hospital; admin-only writes
+    match /hospitals/{hospitalId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Additional collections for migration support
+    // Groups: public read; creator can manage; members can read
+    match /groups/{groupId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.creatorId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.creatorId == request.auth.uid;
+    }
+
+    // Group Members: public read; group creator and member can manage
+    match /groupMembers/{memberId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Post Likes: public read; user can manage their own likes
+    match /postLikes/{likeId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Messages: private to sender and receiver
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
+    }
+
+    // Milestones (top-level): private to owner
+    match /milestones/{milestoneId} {
+      allow read: if isOwner(resource.data);
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data) && request.resource.data.userId == resource.data.userId;
+    }
+
+    // Achievements (top-level): public read; system/admin writes
+    match /achievements/{achievementId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // User Achievements: private to owner
+    match /userAchievements/{userAchievementId} {
+      allow read: if isOwner(resource.data);
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data);
+    }
+
+    // Resources: public read; admin writes
+    match /resources/{resourceId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Resource Ratings: public read; user can manage their own ratings
+    match /resourceRatings/{ratingId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Resource Suggestions (camelCase path): users create; admins moderate
+    match /resourceSuggestions/{suggestionId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || resource.data.userId == request.auth.uid
+      );
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Resource Applications: private to applicant; resource owner and admin can read
+    match /resourceApplications/{applicationId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || resource.data.userId == request.auth.uid
+      );
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // Conditions: public read; admin writes
+    match /conditions/{conditionId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Tracker Entries (camelCase path): private to owner
+    match /trackerEntries/{entryId} {
+      allow read: if isOwner(resource.data);
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data) && request.resource.data.userId == resource.data.userId;
+    }
+  }
+}
