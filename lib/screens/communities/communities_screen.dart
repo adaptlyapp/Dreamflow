@@ -313,8 +313,18 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with SingleTicker
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Column(
+      body: Stack(
+        children: [
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/b0380405-152d-4717-8856-bf48d924b809.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Content
+          SafeArea(
+            child: Column(
           children: [
             Padding(
               padding: EdgeInsets.fromLTRB(
@@ -509,6 +519,8 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with SingleTicker
             ),
           ],
         ),
+            ),
+        ],
       ),
     );
   }

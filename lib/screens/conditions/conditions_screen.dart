@@ -113,7 +113,17 @@ class _ConditionsScreenState extends State<ConditionsScreen>
     super.build(context);
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      body: RefreshIndicator.adaptive(
+      body: Stack(
+        children: [
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/b0380405-152d-4717-8856-bf48d924b809.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Content
+          RefreshIndicator.adaptive(
         onRefresh: _loadConditions,
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
@@ -239,6 +249,8 @@ class _ConditionsScreenState extends State<ConditionsScreen>
               ),
           ],
         ),
+          ),
+        ],
       ),
     );
   }

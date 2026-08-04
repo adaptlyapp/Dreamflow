@@ -107,8 +107,18 @@ class _ProfileScreenState extends State<ProfileScreen>
         authEmail == 'dpaine170014@gmail.com' ||
         userEmail == 'dpaine170014@gmail.com';
     return Scaffold(
-      body: SafeArea(
-        child: _loading
+      body: Stack(
+        children: [
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/b0380405-152d-4717-8856-bf48d924b809.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Content
+          SafeArea(
+            child: _loading
             ? const Center(child: CenteredLoadingSkeleton())
             : RefreshIndicator(
                 onRefresh: _load,
@@ -454,6 +464,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ],
                 ),
               ),
+            ),
+        ],
       ),
     );
   }

@@ -213,8 +213,18 @@ class _TrackerScreenState extends State<TrackerScreen>
     super.build(context);
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      body: SafeArea(
-        child: DefaultTabController(
+      body: Stack(
+        children: [
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/b0380405-152d-4717-8856-bf48d924b809.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Content
+          SafeArea(
+            child: DefaultTabController(
           length: 2,
           child: Column(
             children: [
@@ -347,6 +357,8 @@ class _TrackerScreenState extends State<TrackerScreen>
             ],
           ),
         ),
+          ),
+        ],
       ),
     );
   }

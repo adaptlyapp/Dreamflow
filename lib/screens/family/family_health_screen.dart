@@ -208,6 +208,8 @@ class _FamilyHealthScreenState extends State<FamilyHealthScreen> with SingleTick
         ),
         centerTitle: true,
         elevation: 0,
+        backgroundColor: Colors.transparent,
+        forceMaterialTransparency: true,
       ),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: cs.primary))
@@ -262,16 +264,6 @@ class _FamilyHealthScreenState extends State<FamilyHealthScreen> with SingleTick
                     // Header with patient selector
                     Container(
                       padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.lg),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            cs.primary.withValues(alpha: 0.12),
-                            cs.primary.withValues(alpha: 0.05),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

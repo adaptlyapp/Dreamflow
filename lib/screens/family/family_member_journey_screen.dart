@@ -11,13 +11,15 @@ import 'package:wellspring/screens/goals/milestone_education_page.dart';
 import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/openai/openai_config.dart';
 import 'package:wellspring/widgets/skeletons.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Family member's own journey page - completely separate from patient journey
 class FamilyMemberJourneyScreen extends StatefulWidget {
   const FamilyMemberJourneyScreen({super.key});
 
   @override
-  State<FamilyMemberJourneyScreen> createState() => _FamilyMemberJourneyScreenState();
+  State<FamilyMemberJourneyScreen> createState() =>
+      _FamilyMemberJourneyScreenState();
 }
 
 class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
@@ -39,7 +41,7 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
     try {
       final user = await _userService.getCurrentUser();
       final authUserId = SupabaseConfig.client.auth.currentUser?.id;
-      
+
       if (user == null || authUserId == null) {
         setState(() => _isLoading = false);
         return;
@@ -52,7 +54,7 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
           .select()
           .eq('profile_id', user.id)
           .order('created_at', ascending: true);
-      
+
       final goalsData = await SupabaseConfig.client
           .from('goals')
           .select()
@@ -104,7 +106,9 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
               children: [
                 Icon(Icons.flag_outlined, size: 64, color: cs.onSurfaceVariant),
                 const SizedBox(height: 16),
-                const Text('Start Your Journey', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const Text('Start Your Journey',
+                    style:
+                        TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
                 Text(
                   'Create your own recovery milestones and goals to track your progress.',
@@ -125,13 +129,22 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
     }
 
     final milestones = (_journeyData?['milestones'] as List?) ?? [];
-    final completedCount = milestones.where((m) => m['completed'] == true).length;
+    final completedCount =
+        milestones.where((m) => m['completed'] == true).length;
     final totalCount = milestones.length;
-    final goals = ((_journeyData?['goals'] as List?) ?? []).where((g) => g['active'] == true).toList();
+    final goals = ((_journeyData?['goals'] as List?) ?? [])
+        .where((g) => g['active'] == true)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Journey'),
+        title: Text(
+          'A.R.I.E',
+          style: Theme.of(context)
+              .textTheme
+              .headlineLarge
+              ?.copyWith(color: Theme.of(context).colorScheme.primary),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
@@ -144,13 +157,15 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
           children: [
             // Header
             Text(
-              'Your Recovery Journey',
-              style: context.textStyles.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              'Your Plan',
+              style: context.textStyles.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'Track your own milestones, goals, and progress',
-              style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
+              style:
+                  context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
 
@@ -161,7 +176,8 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                 onView: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => RecoveryBlueprintDashboard(patientId: _userId),
+                      builder: (context) =>
+                          RecoveryBlueprintDashboard(patientId: _userId),
                     ),
                   );
                 },
@@ -266,7 +282,8 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
               onPressed: () async {
                 if (titleController.text.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter a milestone title')),
+                    const SnackBar(
+                        content: Text('Please enter a milestone title')),
                   );
                   return;
                 }
@@ -289,7 +306,8 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                   Navigator.pop(dialogContext);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✅ Milestone added successfully!')),
+                      const SnackBar(
+                          content: Text('✅ Milestone added successfully!')),
                     );
                     _loadData();
                   }
@@ -392,7 +410,8 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                   Navigator.pop(dialogContext);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✅ Goal added successfully!')),
+                      const SnackBar(
+                          content: Text('✅ Goal added successfully!')),
                     );
                     _loadData();
                   }
@@ -415,7 +434,7 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
     int count = 5;
     String durationUnit = 'weeks';
     final durationCtrl = TextEditingController(text: '8');
-    
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -450,13 +469,16 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Generate Recovery Plan with AI', style: ctx.textStyles.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  Text('Generate Recovery Plan with AI',
+                      style: ctx.textStyles.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   TextField(
                     controller: descCtrl,
                     decoration: const InputDecoration(
                       labelText: 'Describe your recovery goals',
-                      hintText: 'e.g., Support patient care while maintaining my own wellbeing',
+                      hintText:
+                          'e.g., Support patient care while maintaining my own wellbeing',
                       border: OutlineInputBorder(),
                     ),
                     maxLines: 3,
@@ -468,7 +490,8 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                       child: DropdownButtonFormField<String>(
                         value: durationUnit,
                         items: const [
-                          DropdownMenuItem(value: 'weeks', child: Text('Weeks')),
+                          DropdownMenuItem(
+                              value: 'weeks', child: Text('Weeks')),
                           DropdownMenuItem(value: 'days', child: Text('Days')),
                         ],
                         onChanged: (v) {
@@ -478,7 +501,9 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                             durationCtrl.text = next == 'days' ? '30' : '8';
                           });
                         },
-                        decoration: const InputDecoration(labelText: 'Duration unit', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                            labelText: 'Duration unit',
+                            border: OutlineInputBorder()),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -486,10 +511,15 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                       child: TextFormField(
                         controller: durationCtrl,
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
                         decoration: InputDecoration(
-                          labelText: durationUnit == 'days' ? 'Duration (days)' : 'Duration (weeks)',
-                          helperText: durationUnit == 'days' ? '1–365' : '1–104',
+                          labelText: durationUnit == 'days'
+                              ? 'Duration (days)'
+                              : 'Duration (weeks)',
+                          helperText:
+                              durationUnit == 'days' ? '1–365' : '1–104',
                           border: const OutlineInputBorder(),
                         ),
                         onChanged: (_) => setLocal(() {}),
@@ -500,10 +530,13 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                   DropdownButtonFormField<int>(
                     value: count,
                     items: [3, 4, 5, 6, 7, 8]
-                        .map((c) => DropdownMenuItem(value: c, child: Text('$c milestones')))
+                        .map((c) => DropdownMenuItem(
+                            value: c, child: Text('$c milestones')))
                         .toList(),
                     onChanged: (v) => setLocal(() => count = v ?? 5),
-                    decoration: const InputDecoration(labelText: 'Number of milestones', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                        labelText: 'Number of milestones',
+                        border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 20),
                   SizedBox(
@@ -514,7 +547,9 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                           : () async {
                               if (descCtrl.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Please describe your recovery goals')),
+                                  const SnackBar(
+                                      content: Text(
+                                          'Please describe your recovery goals')),
                                 );
                                 return;
                               }
@@ -527,62 +562,77 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                                 final description = descCtrl.text.trim();
                                 final dDays = durationDays();
                                 List<Map<String, dynamic>> plan;
-                                
+
                                 try {
                                   final ai = OpenAIClient();
                                   plan = await ai.generateMilestones(
                                     description: description,
                                     milestones: count,
                                     durationDays: dDays,
-                                    conditionName: 'Family Member Recovery Support',
+                                    conditionName:
+                                        'Family Member Recovery Support',
                                     conditionDetailsSummary: null,
                                   );
                                 } catch (e) {
-                                  debugPrint('[FamilyMemberJourney] AI generate failed: $e');
+                                  debugPrint(
+                                      '[FamilyMemberJourney] AI generate failed: $e');
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('AI is unavailable right now')),
+                                      const SnackBar(
+                                          content: Text(
+                                              'AI is unavailable right now')),
                                     );
                                   }
                                   return;
                                 }
-                                
+
                                 if (_userId == null) return;
-                                
+
                                 // Save generated milestones
-                                final authUserId = SupabaseConfig.client.auth.currentUser?.id;
+                                final authUserId =
+                                    SupabaseConfig.client.auth.currentUser?.id;
                                 for (int i = 0; i < plan.length; i++) {
                                   final item = plan[i];
-                                  await SupabaseConfig.client.from('milestones').insert({
+                                  await SupabaseConfig.client
+                                      .from('milestones')
+                                      .insert({
                                     'user_id': authUserId,
                                     'profile_id': _userId,
-                                    'title': item['title'] ?? 'Milestone ${i + 1}',
+                                    'title':
+                                        item['title'] ?? 'Milestone ${i + 1}',
                                     'description': item['description'],
                                     'due_date': item['dueDate'],
                                     'completed': false,
-                                    'created_at': DateTime.now().toIso8601String(),
+                                    'created_at':
+                                        DateTime.now().toIso8601String(),
                                   });
                                 }
-                                
+
                                 Navigator.pop(ctx);
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('✅ Generated $count milestones!')),
+                                    SnackBar(
+                                        content: Text(
+                                            '✅ Generated $count milestones!')),
                                   );
                                   _loadData();
                                 }
                               } catch (e) {
-                                debugPrint('[FamilyMemberJourney] Generate error: $e');
+                                debugPrint(
+                                    '[FamilyMemberJourney] Generate error: $e');
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Error generating plan: $e')),
+                                    SnackBar(
+                                        content:
+                                            Text('Error generating plan: $e')),
                                   );
                                 }
                               } finally {
                                 try {
                                   setLocal(() => _generating = false);
                                 } catch (_) {
-                                  if (mounted) setState(() => _generating = false);
+                                  if (mounted)
+                                    setState(() => _generating = false);
                                 }
                               }
                             },
@@ -593,7 +643,8 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                               child: InlineLoadingDot(),
                             )
                           : const Icon(Icons.auto_awesome),
-                      label: Text(_generating ? 'Generating...' : 'Generate Plan'),
+                      label:
+                          Text(_generating ? 'Generating...' : 'Generate Plan'),
                     ),
                   ),
                 ],
@@ -640,9 +691,13 @@ class _BlueprintCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Recovery Blueprint', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  Text('Recovery Blueprint',
+                      style: context.textStyles.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text('View your comprehensive recovery plan', style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant)),
+                  Text('View your comprehensive recovery plan',
+                      style: context.textStyles.bodySmall
+                          ?.withColor(cs.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -679,18 +734,22 @@ class _CreateBlueprintCard extends StatelessWidget {
                   color: Colors.teal.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.assignment_outlined, color: Colors.teal, size: 24),
+                child: const Icon(Icons.assignment_outlined,
+                    color: Colors.teal, size: 24),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Text('Recovery Blueprint', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                child: Text('Recovery Blueprint',
+                    style: context.textStyles.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
             'Create a comprehensive recovery plan with care team coordination, schedules, and supply tracking.',
-            style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
+            style:
+                context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -711,7 +770,10 @@ class _StatsCard extends StatelessWidget {
   final int completedCount;
   final int totalCount;
   final int activeGoalsCount;
-  const _StatsCard({required this.completedCount, required this.totalCount, required this.activeGoalsCount});
+  const _StatsCard(
+      {required this.completedCount,
+      required this.totalCount,
+      required this.activeGoalsCount});
 
   @override
   Widget build(BuildContext context) {
@@ -727,20 +789,25 @@ class _StatsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Progress Overview', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Text('Progress Overview',
+              style: context.textStyles.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
-                child: _StatTile('Completed', completedCount.toString(), Colors.teal),
+                child: _StatTile(
+                    'Completed', completedCount.toString(), Colors.teal),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _StatTile('Remaining', (totalCount - completedCount).toString(), Colors.orange),
+                child: _StatTile('Remaining',
+                    (totalCount - completedCount).toString(), Colors.orange),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _StatTile('Active Goals', activeGoalsCount.toString(), Colors.blue),
+                child: _StatTile(
+                    'Active Goals', activeGoalsCount.toString(), Colors.blue),
               ),
             ],
           ),
@@ -753,7 +820,8 @@ class _StatsCard extends StatelessWidget {
             color: Colors.teal,
           ),
           const SizedBox(height: 8),
-          Text('${(progress * 100).toInt()}% Complete', style: context.textStyles.labelMedium),
+          Text('${(progress * 100).toInt()}% Complete',
+              style: context.textStyles.labelMedium),
         ],
       ),
     );
@@ -776,9 +844,14 @@ class _StatTile extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(value, style: context.textStyles.headlineSmall?.copyWith(color: color, fontWeight: FontWeight.bold)),
+          Text(value,
+              style: context.textStyles.headlineSmall
+                  ?.copyWith(color: color, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(label, style: context.textStyles.labelSmall, textAlign: TextAlign.center, maxLines: 2),
+          Text(label,
+              style: context.textStyles.labelSmall,
+              textAlign: TextAlign.center,
+              maxLines: 2),
         ],
       ),
     );
@@ -791,21 +864,30 @@ class _MilestonesCard extends StatelessWidget {
   final VoidCallback onAdd;
   final VoidCallback onGenerateAI;
   final VoidCallback onRefresh;
-  const _MilestonesCard({required this.milestones, this.userId, required this.onAdd, required this.onGenerateAI, required this.onRefresh});
+  const _MilestonesCard(
+      {required this.milestones,
+      this.userId,
+      required this.onAdd,
+      required this.onGenerateAI,
+      required this.onRefresh});
 
-  Future<void> _toggleMilestone(BuildContext context, Map<String, dynamic> milestone) async {
+  Future<void> _toggleMilestone(
+      BuildContext context, Map<String, dynamic> milestone) async {
     try {
       final milestoneId = milestone['id'];
       final currentlyCompleted = milestone['completed'] == true;
-      
+
       await SupabaseConfig.client.from('milestones').update({
         'completed': !currentlyCompleted,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', milestoneId);
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(currentlyCompleted ? '✓ Milestone unmarked' : '✅ Milestone completed!')),
+          SnackBar(
+              content: Text(currentlyCompleted
+                  ? '✓ Milestone unmarked'
+                  : '✅ Milestone completed!')),
         );
         onRefresh();
       }
@@ -819,7 +901,8 @@ class _MilestonesCard extends StatelessWidget {
     }
   }
 
-  void _showMilestoneOptions(BuildContext context, Map<String, dynamic> milestone) {
+  void _showMilestoneOptions(
+      BuildContext context, Map<String, dynamic> milestone) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -844,7 +927,8 @@ class _MilestonesCard extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete Milestone', style: TextStyle(color: Colors.red)),
+              title: const Text('Delete Milestone',
+                  style: TextStyle(color: Colors.red)),
               onTap: () async {
                 Navigator.pop(ctx);
                 final confirm = await showDialog<bool>(
@@ -859,13 +943,14 @@ class _MilestonesCard extends StatelessWidget {
                       ),
                       FilledButton(
                         onPressed: () => Navigator.pop(ctx, true),
-                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                        style:
+                            FilledButton.styleFrom(backgroundColor: Colors.red),
                         child: const Text('Delete'),
                       ),
                     ],
                   ),
                 );
-                
+
                 if (confirm == true && context.mounted) {
                   await _deleteMilestone(context, milestone['id']);
                 }
@@ -892,10 +977,14 @@ class _MilestonesCard extends StatelessWidget {
     );
   }
 
-  Future<void> _deleteMilestone(BuildContext context, String milestoneId) async {
+  Future<void> _deleteMilestone(
+      BuildContext context, String milestoneId) async {
     try {
-      await SupabaseConfig.client.from('milestones').delete().eq('id', milestoneId);
-      
+      await SupabaseConfig.client
+          .from('milestones')
+          .delete()
+          .eq('id', milestoneId);
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Milestone deleted')),
@@ -912,10 +1001,14 @@ class _MilestonesCard extends StatelessWidget {
     }
   }
 
-  void _showEditMilestoneDialog(BuildContext context, Map<String, dynamic> milestone) {
+  void _showEditMilestoneDialog(
+      BuildContext context, Map<String, dynamic> milestone) {
     final titleController = TextEditingController(text: milestone['title']);
-    final descriptionController = TextEditingController(text: milestone['description'] ?? '');
-    DateTime? targetDate = milestone['due_date'] != null ? DateTime.tryParse(milestone['due_date']) : null;
+    final descriptionController =
+        TextEditingController(text: milestone['description'] ?? '');
+    DateTime? targetDate = milestone['due_date'] != null
+        ? DateTime.tryParse(milestone['due_date'])
+        : null;
 
     showDialog(
       context: context,
@@ -955,7 +1048,8 @@ class _MilestonesCard extends StatelessWidget {
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: targetDate ?? DateTime.now().add(const Duration(days: 30)),
+                      initialDate: targetDate ??
+                          DateTime.now().add(const Duration(days: 30)),
                       firstDate: DateTime.now(),
                       lastDate: DateTime.now().add(const Duration(days: 365)),
                     );
@@ -976,7 +1070,8 @@ class _MilestonesCard extends StatelessWidget {
               onPressed: () async {
                 if (titleController.text.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter a milestone title')),
+                    const SnackBar(
+                        content: Text('Please enter a milestone title')),
                   );
                   return;
                 }
@@ -1028,7 +1123,14 @@ class _MilestonesCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Recovery Milestones', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                child: Text(
+                  'A.R.I.E',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: GoogleFonts.albertSans().fontFamily,
+                      fontSize: AppSpacing.lg),
+                  textAlign: TextAlign.center,
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.auto_awesome),
@@ -1051,9 +1153,12 @@ class _MilestonesCard extends StatelessWidget {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    Icon(Icons.flag_outlined, size: 48, color: cs.onSurfaceVariant),
+                    Icon(Icons.flag_outlined,
+                        size: 48, color: cs.onSurfaceVariant),
                     const SizedBox(height: 12),
-                    Text('No milestones yet', style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant)),
+                    Text('No milestones yet',
+                        style: context.textStyles.bodyMedium
+                            ?.withColor(cs.onSurfaceVariant)),
                     const SizedBox(height: 16),
                     Wrap(
                       alignment: WrapAlignment.center,
@@ -1082,13 +1187,15 @@ class _MilestonesCard extends StatelessWidget {
               final m = entry.value;
               final isCompleted = m['completed'] == true;
               return Padding(
-                padding: EdgeInsets.only(bottom: index < milestones.length - 1 ? 12 : 0),
+                padding: EdgeInsets.only(
+                    bottom: index < milestones.length - 1 ? 12 : 0),
                 child: InkWell(
                   onTap: () => _toggleMilestone(context, m),
                   onLongPress: () => _showMilestoneOptions(context, m),
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                     child: Row(
                       children: [
                         Container(
@@ -1096,7 +1203,8 @@ class _MilestonesCard extends StatelessWidget {
                           height: 32,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isCompleted ? Colors.teal : Colors.transparent,
+                            color:
+                                isCompleted ? Colors.teal : Colors.transparent,
                             border: Border.all(
                               color: isCompleted ? Colors.teal : cs.outline,
                               width: 2,
@@ -1104,8 +1212,10 @@ class _MilestonesCard extends StatelessWidget {
                           ),
                           child: Center(
                             child: isCompleted
-                                ? const Icon(Icons.check, color: Colors.white, size: 18)
-                                : Text('${index + 1}', style: context.textStyles.labelMedium),
+                                ? const Icon(Icons.check,
+                                    color: Colors.white, size: 18)
+                                : Text('${index + 1}',
+                                    style: context.textStyles.labelMedium),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1116,15 +1226,19 @@ class _MilestonesCard extends StatelessWidget {
                               Text(
                                 m['title'] ?? 'Milestone ${index + 1}',
                                 style: context.textStyles.bodyMedium?.copyWith(
-                                  decoration: isCompleted ? TextDecoration.lineThrough : null,
+                                  decoration: isCompleted
+                                      ? TextDecoration.lineThrough
+                                      : null,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              if (m['description'] != null && m['description'].toString().isNotEmpty) ...[
+                              if (m['description'] != null &&
+                                  m['description'].toString().isNotEmpty) ...[
                                 const SizedBox(height: 4),
                                 Text(
                                   m['description'],
-                                  style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
+                                  style: context.textStyles.bodySmall
+                                      ?.withColor(cs.onSurfaceVariant),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1155,19 +1269,25 @@ class _GoalsCard extends StatelessWidget {
   final String? userId;
   final VoidCallback onAdd;
   final VoidCallback onRefresh;
-  const _GoalsCard({required this.goals, this.userId, required this.onAdd, required this.onRefresh});
+  const _GoalsCard(
+      {required this.goals,
+      this.userId,
+      required this.onAdd,
+      required this.onRefresh});
 
-  Future<void> _incrementProgress(BuildContext context, Map<String, dynamic> goal) async {
+  Future<void> _incrementProgress(
+      BuildContext context, Map<String, dynamic> goal) async {
     try {
-      final currentProgress = goal['progress_this_period'] ?? goal['progressThisPeriod'] ?? 0;
+      final currentProgress =
+          goal['progress_this_period'] ?? goal['progressThisPeriod'] ?? 0;
       final target = goal['target_per_period'] ?? goal['targetPerPeriod'] ?? 1;
       final newProgress = (currentProgress + 1).clamp(0, target);
-      
+
       await SupabaseConfig.client.from('goals').update({
         'progress_this_period': newProgress,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', goal['id']);
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('✅ Progress: $newProgress/$target')),
@@ -1209,7 +1329,8 @@ class _GoalsCard extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.archive, color: Colors.orange),
-              title: const Text('Archive Goal', style: TextStyle(color: Colors.orange)),
+              title: const Text('Archive Goal',
+                  style: TextStyle(color: Colors.orange)),
               onTap: () async {
                 Navigator.pop(ctx);
                 await _archiveGoal(context, goal['id']);
@@ -1227,7 +1348,7 @@ class _GoalsCard extends StatelessWidget {
         'progress_this_period': 0,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', goalId);
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Progress reset')),
@@ -1250,7 +1371,7 @@ class _GoalsCard extends StatelessWidget {
         'active': false,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', goalId);
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Goal archived')),
@@ -1270,7 +1391,8 @@ class _GoalsCard extends StatelessWidget {
   void _showEditGoalDialog(BuildContext context, Map<String, dynamic> goal) {
     final titleController = TextEditingController(text: goal['title']);
     final targetController = TextEditingController(
-      text: (goal['target_per_period'] ?? goal['targetPerPeriod'] ?? 10).toString(),
+      text: (goal['target_per_period'] ?? goal['targetPerPeriod'] ?? 10)
+          .toString(),
     );
     String frequency = goal['period'] ?? goal['frequency'] ?? 'daily';
 
@@ -1381,7 +1503,9 @@ class _GoalsCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Active Goals', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                child: Text('Active Goals',
+                    style: context.textStyles.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ),
               IconButton(
                 icon: const Icon(Icons.add_circle),
@@ -1397,9 +1521,12 @@ class _GoalsCard extends StatelessWidget {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    Icon(Icons.track_changes, size: 48, color: cs.onSurfaceVariant),
+                    Icon(Icons.track_changes,
+                        size: 48, color: cs.onSurfaceVariant),
                     const SizedBox(height: 12),
-                    Text('No goals yet', style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant)),
+                    Text('No goals yet',
+                        style: context.textStyles.bodyMedium
+                            ?.withColor(cs.onSurfaceVariant)),
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: onAdd,
@@ -1414,11 +1541,14 @@ class _GoalsCard extends StatelessWidget {
             ...goals.asMap().entries.map((entry) {
               final index = entry.key;
               final g = entry.value;
-              final currentProgress = g['progress_this_period'] ?? g['progressThisPeriod'] ?? 0;
-              final target = g['target_per_period'] ?? g['targetPerPeriod'] ?? 1;
+              final currentProgress =
+                  g['progress_this_period'] ?? g['progressThisPeriod'] ?? 0;
+              final target =
+                  g['target_per_period'] ?? g['targetPerPeriod'] ?? 1;
               final progress = currentProgress / target;
               return Padding(
-                padding: EdgeInsets.only(bottom: index < goals.length - 1 ? 16 : 0),
+                padding:
+                    EdgeInsets.only(bottom: index < goals.length - 1 ? 16 : 0),
                 child: InkWell(
                   onTap: () => _incrementProgress(context, g),
                   onLongPress: () => _showGoalOptions(context, g),
@@ -1434,7 +1564,8 @@ class _GoalsCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 g['title'] ?? 'Goal',
-                                style: context.textStyles.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                                style: context.textStyles.bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w600),
                               ),
                             ),
                             Row(
@@ -1464,7 +1595,8 @@ class _GoalsCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           'Tap to add progress • Long press for options',
-                          style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant),
+                          style: context.textStyles.labelSmall
+                              ?.withColor(cs.onSurfaceVariant),
                         ),
                       ],
                     ),

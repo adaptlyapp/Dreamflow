@@ -153,6 +153,65 @@ class FamilyService {
       
       debugPrint('[FamilyService] Connected family member $familyMemberId to patient $patientId');
 
+      // CRITICAL FIX: Also save connection to Supabase for persistence across devices/reinstalls
+      try {
+        final authUser = _supabase.auth.currentUser;
+        if (authUser != null) {
+          debugPrint('[FamilyService] Saving connection to Supabase for persistence...');
+          
+          // First, ensure a family_members record exists for this auth user
+          var familyMemberRecord = await _supabase
+              .from('family_members')
+              .select('id')
+              .eq('auth_user_id', authUser.id)
+              .maybeSingle();
+          
+          String dbFamilyMemberId;
+          if (familyMemberRecord == null) {
+            // Create family_members record if it doesn't exist
+            debugPrint('[FamilyService] Creating family_members record for auth_user_id: ${authUser.id}');
+            final insertResult = await _supabase
+                .from('family_members')
+                .insert({
+                  'auth_user_id': authUser.id,
+                  'name': authUser.userMetadata?['name'] ?? authUser.email ?? 'Family Member',
+                  'email': authUser.email,
+                })
+                .select('id')
+                .single();
+            dbFamilyMemberId = insertResult['id'] as String;
+            debugPrint('[FamilyService] ✓ Created family_members record: $dbFamilyMemberId');
+          } else {
+            dbFamilyMemberId = familyMemberRecord['id'] as String;
+            debugPrint('[FamilyService] ✓ Using existing family_members record: $dbFamilyMemberId');
+          }
+          
+          // Now create the patient link in family_patient_links
+          // Check if link already exists first
+          final existingLink = await _supabase
+              .from('family_patient_links')
+              .select('id')
+              .eq('family_member_id', dbFamilyMemberId)
+              .eq('patient_id', patientId)
+              .maybeSingle();
+          
+          if (existingLink == null) {
+            await _supabase
+                .from('family_patient_links')
+                .insert({
+                  'family_member_id': dbFamilyMemberId,
+                  'patient_id': patientId,
+                });
+            debugPrint('[FamilyService] ✓ Created family_patient_links record');
+          } else {
+            debugPrint('[FamilyService] ✓ family_patient_links record already exists');
+          }
+        }
+      } catch (e) {
+        debugPrint('[FamilyService] ⚠️ Failed to save connection to Supabase (non-fatal): $e');
+        // Don't fail the whole operation if Supabase save fails
+      }
+
       // Auto-link as viewer on the patient's recovery blueprint (Option 2).
       try {
         final familyAuthId = _supabase.auth.currentUser?.id;
@@ -284,7 +343,25 @@ class FamilyService {
       debugPrint('[FamilyService] Syncing for familyMemberId (profile ID): $familyMemberId');
       debugPrint('[FamilyService] Auth user ID: ${authUser.id}');
       
-      // Get the family_member record by auth_user_id
+      // CRITICAL FIX: Query the users table directly instead of family_members table
+      // The familyMemberId passed in is the profile ID from users table with role='family'
+      // We need to verify this profile exists and belongs to the current auth user
+      final familyProfile = await _supabase
+          .from('users')
+          .select('id, role')
+          .eq('id', familyMemberId)
+          .eq('auth_user_id', authUser.id)
+          .eq('role', 'family')
+          .maybeSingle();
+      
+      if (familyProfile == null) {
+        debugPrint('[FamilyService] No family profile found for user.id: $familyMemberId');
+        return [];
+      }
+      
+      debugPrint('[FamilyService] ✓ Verified family profile exists (ID: $familyMemberId, role: ${familyProfile['role']})');
+      
+      // Now check if there's also a family_members table entry (for web portal compatibility)
       final familyMemberData = await _supabase
           .from('family_members')
           .select('id')
@@ -292,12 +369,13 @@ class FamilyService {
           .maybeSingle();
       
       if (familyMemberData == null) {
-        debugPrint('[FamilyService] No family_member record found for auth_user_id: ${authUser.id}');
+        debugPrint('[FamilyService] No family_member record found in family_members table');
+        debugPrint('[FamilyService] This is normal for mobile-only users who never used the web portal');
         return [];
       }
       
       final dbFamilyMemberId = familyMemberData['id'] as String;
-      debugPrint('[FamilyService] Found family_member record (DB ID): $dbFamilyMemberId');
+      debugPrint('[FamilyService] ✓ Found family_member record in family_members table (DB ID: $dbFamilyMemberId)');
       
       // Get all patient links from family_patient_links
       final links = await _supabase

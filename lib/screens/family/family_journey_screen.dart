@@ -46,21 +46,23 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
         setState(() => _isLoading = false);
         return;
       }
-      
+
       // Load patient's journey data only
       final connection = await _familyService.getPrimaryConnection(user.id);
       Map<String, dynamic>? patientJourneyData;
       RecoveryBlueprint? patientBlueprint;
       String? patientId;
       String? patientName;
-      
+
       if (connection != null) {
-        patientJourneyData = await _familyService.getJourneyData(connection.patientId);
-        patientBlueprint = await _blueprintService.getByUserId(connection.patientId);
+        patientJourneyData =
+            await _familyService.getJourneyData(connection.patientId);
+        patientBlueprint =
+            await _blueprintService.getByUserId(connection.patientId);
         patientId = connection.patientId;
         patientName = connection.patientName;
       }
-      
+
       setState(() {
         _patientJourney = patientJourneyData;
         _patientBlueprint = patientBlueprint;
@@ -78,9 +80,9 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     if (_isLoading) {
       return Scaffold(
         body: Stack(
@@ -116,7 +118,7 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
 
     // Show patient's journey only
     final displayName = _patientName ?? "Patient";
-    
+
     if (_patientJourney == null) {
       return Scaffold(
         body: Stack(
@@ -148,71 +150,72 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                  Text(
-                    'Journey',
-                    style: context.textStyles.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Track recovery progress and milestones',
-                    style: context.textStyles.bodyLarge?.withColor(
-                      Colors.white.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.flag_outlined,
-                              size: 48,
-                              color: Color(0xFF1ED3CF),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            'No Patient Connected',
-                            style: context.textStyles.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Connect with a patient to view their\nrecovery journey and milestones.',
-                            style: context.textStyles.bodyMedium?.withColor(
-                              Colors.white.withValues(alpha: 0.7),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                    Text(
+                      'Journey',
+                      style: context.textStyles.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Track recovery progress and milestones',
+                      style: context.textStyles.bodyLarge?.withColor(
+                        Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.flag_outlined,
+                                size: 48,
+                                color: Color(0xFF1ED3CF),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'No Patient Connected',
+                              style: context.textStyles.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Connect with a patient to view their\nrecovery journey and milestones.',
+                              style: context.textStyles.bodyMedium?.withColor(
+                                Colors.white.withValues(alpha: 0.7),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           ],
         ),
       );
     }
 
     final milestones = (_patientJourney?['milestones'] as List?) ?? [];
-    final completedCount = milestones.where((m) => m['completed'] == true).length;
+    final completedCount =
+        milestones.where((m) => m['completed'] == true).length;
     final totalCount = milestones.length;
-    
+
     return Scaffold(
       body: Stack(
         children: [
@@ -243,169 +246,172 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                // Header
-                Text(
-                  'Journey',
-                  style: context.textStyles.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Track ${displayName}\'s recovery progress',
-                  style: context.textStyles.bodyMedium?.withColor(
-                    Colors.white.withValues(alpha: 0.7),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                
-                // Recovery Milestones Section (Main Focus)
-                _RecoveryMilestonesCard(
-                  milestones: milestones,
-                  completedCount: completedCount,
-                  totalCount: totalCount,
-                  patientName: displayName,
-                  onViewDetails: () {
-                    context.push('/family/journey-detail');
-                  },
-                ),
-                const SizedBox(height: 16),
-                
-                // Recovery Blueprint Card
-                if (_patientBlueprint != null)
-                  _RecoveryBlueprintCard(
-                    blueprint: _patientBlueprint!,
-                    onView: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => RecoveryBlueprintDashboard(
-                            patientId: _patientId,
-                          ),
-                        ),
-                      );
-                    },
-                  )
-                else
-                  _NoRecoveryBlueprintCard(
-                    onCreate: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('The patient hasn\'t created their Recovery Blueprint yet.'),
-                          backgroundColor: Colors.orange.shade700,
-                        ),
-                      );
-                    },
-                  ),
-                const SizedBox(height: 24),
-                
-                // Your Journey Section (with teal gradient button)
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: const Color(0xFF1ED3CF).withValues(alpha: 0.3),
-                      width: 1.5,
+                  // Header
+                  Text(
+                    'Journey',
+                    style: context.textStyles.headlineLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1ED3CF).withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.explore,
-                              color: Color(0xFF1ED3CF),
-                              size: 22,
+                  const SizedBox(height: 8),
+                  Text(
+                    'Track ${displayName}\'s recovery progress',
+                    style: context.textStyles.bodyMedium?.withColor(
+                      Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // Recovery Milestones Section (Main Focus)
+                  _RecoveryMilestonesCard(
+                    milestones: milestones,
+                    completedCount: completedCount,
+                    totalCount: totalCount,
+                    patientName: displayName,
+                    onViewDetails: () {
+                      context.push('/family/journey-detail');
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Recovery Blueprint Card
+                  if (_patientBlueprint != null)
+                    _RecoveryBlueprintCard(
+                      blueprint: _patientBlueprint!,
+                      onView: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => RecoveryBlueprintDashboard(
+                              patientId: _patientId,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Your Journey',
-                            style: context.textStyles.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                        );
+                      },
+                    )
+                  else
+                    _NoRecoveryBlueprintCard(
+                      onCreate: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text(
+                                'The patient hasn\'t created their Recovery Blueprint yet.'),
+                            backgroundColor: Colors.orange.shade700,
                           ),
-                        ],
+                        );
+                      },
+                    ),
+                  const SizedBox(height: 24),
+
+                  // Your Journey Section (with teal gradient button)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF1ED3CF).withValues(alpha: 0.3),
+                        width: 1.5,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Create your own recovery milestones and track your progress',
-                        style: context.textStyles.bodyMedium?.withColor(
-                          Colors.white.withValues(alpha: 0.7),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(28),
-                            gradient: const LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [
-                                Color(0xFF1ED3CF),
-                                Color(0xFF22D3A0),
-                                Color(0xFF7BE38C),
-                              ],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF1ED3CF).withValues(alpha: 0.4),
-                                blurRadius: 18,
-                                offset: const Offset(0, 8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1ED3CF)
+                                    .withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                            ],
+                              child: const Icon(
+                                Icons.explore,
+                                color: Color(0xFF1ED3CF),
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Plan with A.R.I.E',
+                              style: context.textStyles.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Create your own recovery milestones and track your progress',
+                          style: context.textStyles.bodyMedium?.withColor(
+                            Colors.white.withValues(alpha: 0.7),
                           ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(28),
-                              onTap: () {
-                                context.push('/family/my-journey');
-                              },
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    'View My Journey',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Icon(
-                                    Icons.arrow_forward,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
+                              gradient: const LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  Color(0xFF1ED3CF),
+                                  Color(0xFF22D3A0),
+                                  Color(0xFF7BE38C),
                                 ],
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF1ED3CF)
+                                      .withValues(alpha: 0.4),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(28),
+                                onTap: () {
+                                  context.push('/family/my-journey');
+                                },
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      'My Plan',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(
+                                      Icons.arrow_forward,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-              ],
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
-          ),
           ),
         ],
       ),
@@ -462,24 +468,34 @@ class _StatsWidget extends StatelessWidget {
                     ),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.show_chart, color: Colors.white, size: 18),
+                  child: const Icon(Icons.show_chart,
+                      color: Colors.white, size: 18),
                 ),
                 const SizedBox(width: 12),
-                Text('Progress Overview', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text('Progress Overview',
+                    style: context.textStyles.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: _StatTile('Completed', completedCount.toString(), Colors.teal)),
+                Expanded(
+                    child: _StatTile(
+                        'Completed', completedCount.toString(), Colors.teal)),
                 const SizedBox(width: 12),
-                Expanded(child: _StatTile('Remaining', remaining.toString(), Colors.orange)),
+                Expanded(
+                    child: _StatTile(
+                        'Remaining', remaining.toString(), Colors.orange)),
                 const SizedBox(width: 12),
-                Expanded(child: _StatTile('Active Goals', activeGoalsCount.toString(), Colors.blue)),
+                Expanded(
+                    child: _StatTile('Active Goals',
+                        activeGoalsCount.toString(), Colors.blue)),
               ],
             ),
             const SizedBox(height: 20),
-            Text('${(progress * 100).toInt()}% Complete', style: context.textStyles.labelMedium),
+            Text('${(progress * 100).toInt()}% Complete',
+                style: context.textStyles.labelMedium),
             const SizedBox(height: 8),
             LinearProgressIndicator(
               value: progress,
@@ -511,9 +527,14 @@ class _StatTile extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(value, style: context.textStyles.headlineSmall?.copyWith(color: color, fontWeight: FontWeight.bold)),
+          Text(value,
+              style: context.textStyles.headlineSmall
+                  ?.copyWith(color: color, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(label, style: context.textStyles.labelSmall, textAlign: TextAlign.center, maxLines: 2),
+          Text(label,
+              style: context.textStyles.labelSmall,
+              textAlign: TextAlign.center,
+              maxLines: 2),
         ],
       ),
     );
@@ -527,7 +548,9 @@ class _NextMilestoneWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final dueDate = milestone['dueDate'] != null ? DateTime.tryParse(milestone['dueDate']) : null;
+    final dueDate = milestone['dueDate'] != null
+        ? DateTime.tryParse(milestone['dueDate'])
+        : null;
 
     return Container(
       decoration: BoxDecoration(
@@ -577,22 +600,31 @@ class _NextMilestoneWidget extends StatelessWidget {
                   child: const Icon(Icons.flag, color: Colors.white, size: 18),
                 ),
                 const SizedBox(width: 12),
-                Text('Next Milestone', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text('Next Milestone',
+                    style: context.textStyles.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 12),
-            Text(milestone['title'] ?? 'Milestone', style: context.textStyles.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(milestone['title'] ?? 'Milestone',
+                style: context.textStyles.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600)),
             if (milestone['description'] != null) ...[
               const SizedBox(height: 8),
-              Text(milestone['description'], style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant)),
+              Text(milestone['description'],
+                  style: context.textStyles.bodyMedium
+                      ?.withColor(cs.onSurfaceVariant)),
             ],
             if (dueDate != null) ...[
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.calendar_today, size: 14, color: Colors.teal),
+                  const Icon(Icons.calendar_today,
+                      size: 14, color: Colors.teal),
                   const SizedBox(width: 4),
-                  Text('Due: ${dueDate.month}/${dueDate.day}/${dueDate.year}', style: context.textStyles.labelMedium?.copyWith(color: Colors.teal.shade700)),
+                  Text('Due: ${dueDate.month}/${dueDate.day}/${dueDate.year}',
+                      style: context.textStyles.labelMedium
+                          ?.copyWith(color: Colors.teal.shade700)),
                 ],
               ),
             ],
@@ -612,7 +644,7 @@ class _RecoveryMilestonesCard extends StatelessWidget {
     required this.patientName,
     this.onViewDetails,
   });
-  
+
   final List milestones;
   final int completedCount;
   final int totalCount;
@@ -627,9 +659,9 @@ class _RecoveryMilestonesCard extends StatelessWidget {
 
     // Get next upcoming milestone
     final nextMilestone = milestones.cast<Map<String, dynamic>?>().firstWhere(
-      (m) => m?['completed'] != true,
-      orElse: () => null,
-    );
+          (m) => m?['completed'] != true,
+          orElse: () => null,
+        );
 
     return Container(
       decoration: BoxDecoration(
@@ -689,7 +721,8 @@ class _RecoveryMilestonesCard extends StatelessWidget {
                       onPressed: onViewDetails,
                       style: TextButton.styleFrom(
                         foregroundColor: const Color(0xFF1ED3CF),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -711,7 +744,7 @@ class _RecoveryMilestonesCard extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Progress Stats
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -749,7 +782,7 @@ class _RecoveryMilestonesCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Progress Bar
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -777,7 +810,8 @@ class _RecoveryMilestonesCard extends StatelessWidget {
                     value: progress,
                     minHeight: 8,
                     backgroundColor: Colors.white.withValues(alpha: 0.1),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1ED3CF)),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(Color(0xFF1ED3CF)),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -797,7 +831,7 @@ class _ProgressStat extends StatelessWidget {
     required this.value,
     required this.color,
   });
-  
+
   final IconData icon;
   final String label;
   final String value;
@@ -843,7 +877,6 @@ class _ProgressStat extends StatelessWidget {
   }
 }
 
-
 class _RecoveryBlueprintCard extends StatelessWidget {
   final RecoveryBlueprint blueprint;
   final VoidCallback onView;
@@ -854,7 +887,7 @@ class _RecoveryBlueprintCard extends StatelessWidget {
     final careTeamCount = blueprint.careTeam.length;
     final equipmentCount = blueprint.equipment.length;
     final suppliesCount = blueprint.supplies.length;
-    
+
     return InkWell(
       onTap: onView,
       borderRadius: BorderRadius.circular(20),
@@ -953,7 +986,8 @@ class _BlueprintInfoTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _BlueprintInfoTile({required this.icon, required this.label, required this.value});
+  const _BlueprintInfoTile(
+      {required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1061,8 +1095,10 @@ class _NoRecoveryBlueprintCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _BlueprintFeature(icon: Icons.people, text: 'Care team coordination'),
-          _BlueprintFeature(icon: Icons.schedule, text: 'Daily routine scheduling'),
-          _BlueprintFeature(icon: Icons.inventory_2, text: 'Equipment & supply tracking'),
+          _BlueprintFeature(
+              icon: Icons.schedule, text: 'Daily routine scheduling'),
+          _BlueprintFeature(
+              icon: Icons.inventory_2, text: 'Equipment & supply tracking'),
         ],
       ),
     );
@@ -1093,4 +1129,3 @@ class _BlueprintFeature extends StatelessWidget {
     );
   }
 }
-

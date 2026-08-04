@@ -21,6 +21,7 @@ import 'package:wellspring/models/organization.dart';
 import 'package:wellspring/models/hospital.dart';
 import 'package:wellspring/models/vr_agency.dart';
 import 'package:wellspring/theme.dart';
+import 'package:wellspring/widgets/brand_logo.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
 import 'package:url_launcher/url_launcher.dart';
@@ -175,22 +176,75 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Menu', style: context.textStyles.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  Text('Menu',
+                      style: context.textStyles.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: AppSpacing.xs),
-                  Text('Navigate your portal', style: context.textStyles.bodyMedium?.withColor(isDark ? const Color(0xFF9CA3AF) : const Color(0xFF64748B))),
+                  Text('Navigate your portal',
+                      style: context.textStyles.bodyMedium?.withColor(isDark
+                          ? const Color(0xFF9CA3AF)
+                          : const Color(0xFF64748B))),
                 ],
               ),
             ),
-            Divider(color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB), height: 1),
-            _DrawerItem(icon: Icons.dashboard_rounded, label: 'Dashboard', onTap: () { Navigator.pop(context); context.go('/family/dashboard'); }),
-            _DrawerItem(icon: Icons.favorite_rounded, label: 'Health Tracker', onTap: () { Navigator.pop(context); context.go('/family/health'); }),
-            _DrawerItem(icon: Icons.emoji_events_rounded, label: 'Recovery Journey', onTap: () { Navigator.pop(context); context.go('/family/journey'); }),
-            _DrawerItem(icon: Icons.notifications_rounded, label: 'Alerts', onTap: () { Navigator.pop(context); context.go('/family/alerts'); }),
-            _DrawerItem(icon: Icons.folder_rounded, label: 'Resources', onTap: () { Navigator.pop(context); context.go('/family/resources'); }),
-            _DrawerItem(icon: Icons.school_rounded, label: 'Education Hub', onTap: () { Navigator.pop(context); context.push('/family/education'); }),
+            Divider(
+                color:
+                    isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
+                height: 1),
+            _DrawerItem(
+                icon: Icons.dashboard_rounded,
+                label: 'Dashboard',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/family/dashboard');
+                }),
+            _DrawerItem(
+                icon: Icons.favorite_rounded,
+                label: 'Health Tracker',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/family/health');
+                }),
+            _DrawerItem(
+                icon: Icons.emoji_events_rounded,
+                label: 'Recovery Journey',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/family/journey');
+                }),
+            _DrawerItem(
+                icon: Icons.notifications_rounded,
+                label: 'Alerts',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/family/alerts');
+                }),
+            _DrawerItem(
+                icon: Icons.folder_rounded,
+                label: 'Resources',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/family/resources');
+                }),
+            _DrawerItem(
+                icon: Icons.school_rounded,
+                label: 'Education Hub',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/family/education');
+                }),
             const Spacer(),
-            Divider(color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB), height: 1),
-            _DrawerItem(icon: Icons.settings_rounded, label: 'Settings', onTap: () { Navigator.pop(context); context.push('/settings'); }),
+            Divider(
+                color:
+                    isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
+                height: 1),
+            _DrawerItem(
+                icon: Icons.settings_rounded,
+                label: 'Settings',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/settings');
+                }),
           ],
         ),
       ),
@@ -205,14 +259,16 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
 
     if (_loading) {
       return Scaffold(
-        backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
+        backgroundColor:
+            isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
         body: Center(child: CircularProgressIndicator(color: cs.primary)),
       );
     }
 
     if (_connection == null) {
       return Scaffold(
-        backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
+        backgroundColor:
+            isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
         appBar: AppBar(title: const Text('Family Portal')),
         body: Center(
           child: Padding(
@@ -259,116 +315,413 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
     }
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
+      backgroundColor:
+          isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
       drawer: _buildDrawer(context),
       body: Stack(
         children: [
           // Background Image
           Positioned.fill(
             child: Image.asset(
-              'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
+              'assets/images/ChatGPT_Image_Aug_4_2026_01_35_03_PM.png',
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => Container(
-                color: isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
+                color:
+                    isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
               ),
             ),
           ),
-          // Content
-          SafeArea(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _AdaptlyHeader(patientName: _connection!.patientName),
-                  const SizedBox(height: AppSpacing.xl),
-                  _WelcomeCard(
+          // Content (removed SafeArea wrapper to extend to top)
+          SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _FamilyHeader(),
+                const SizedBox(height: AppSpacing.md),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 0),
+                  child: _WelcomeCard(
                     patientName: _connection!.patientName,
                     nextMilestone: _nextMilestone,
                     allMilestonesCompleted: _allMilestonesCompleted,
                   ),
-                  const SizedBox(height: AppSpacing.xl),
-                  _QuickActionsGrid(),
-                  const SizedBox(height: AppSpacing.xl),
-                  _RecoveryHeroCard(
-                    recentEntries: _recentEntries ?? [],
-                    healthScore: _healthScore,
-                  ),
-                  SizedBox(height: MediaQuery.of(context).padding.bottom + AppSpacing.xl),
-                ],
-              ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                _QuickActionsGrid(),
+                const SizedBox(height: AppSpacing.xl),
+                _RecoveryHeroCard(
+                  recentEntries: _recentEntries ?? [],
+                  healthScore: _healthScore,
+                ),
+                SizedBox(
+                    height: MediaQuery.of(context).padding.bottom +
+                        AppSpacing.xl),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-
 }
 
-// Adaptly Premium Header
-class _AdaptlyHeader extends StatelessWidget {
-  final String patientName;
+// Family Header (Patient Portal Style)
+class _FamilyHeader extends StatefulWidget {
+  const _FamilyHeader();
 
-  const _AdaptlyHeader({required this.patientName});
+  @override
+  State<_FamilyHeader> createState() => _FamilyHeaderState();
+}
+
+class _FamilyHeaderState extends State<_FamilyHeader> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final today = DateFormat('EEE, MMM d').format(DateTime.now());
     
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Row(
-        children: [
-          Builder(
-            builder: (context) => Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1F2937) : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: IconButton(
-                icon: Icon(Icons.menu_rounded, color: isDark ? Colors.white : Colors.black),
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              ),
+    // Time-based greeting
+    final hour = DateTime.now().hour;
+    final String greeting = hour < 12
+        ? 'Good morning'
+        : (hour < 17 ? 'Good afternoon' : 'Good evening');
+
+    List<Color> _canopyColors(ColorScheme cs) {
+      if (hour < 12) {
+        return [const Color(0xFF4A90E2), const Color(0xFF2F80FF)]; // Morning blue
+      } else if (hour < 17) {
+        return [const Color(0xFF2F80FF), const Color(0xFF1E5FBF)]; // Afternoon blue
+      } else {
+        return [const Color(0xFF1E5FBF), const Color(0xFF0D47A1)]; // Evening darker blue
+      }
+    }
+
+    return Stack(
+      children: [
+        // Canopy background with time-of-day gradient (extends to top of screen)
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: _canopyColors(cs),
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(AppRadius.xl),
+              bottomRight: Radius.circular(AppRadius.xl),
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'ADAPTLY',
-                  style: context.textStyles.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2.0,
+          child: Stack(
+            children: [
+              // Subtle radial glow motif in the top-right
+              Positioned(
+                top: -30,
+                right: -20,
+                child: Container(
+                  width: 220,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.rectangle,
+                    gradient: RadialGradient(
+                      center: const Alignment(0.8, -0.8),
+                      radius: 1.0,
+                      colors: [
+                        cs.onPrimary.withValues(alpha: 0.10),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 1.0],
+                    ),
                   ),
                 ),
-                Text(
-                  'RECOVER. TRACK. THRIVE.',
-                  style: context.textStyles.labelSmall?.withColor(
-                    isDark ? const Color(0xFF9CA3AF) : const Color(0xFF64748B),
+              ),
+              // Content with status bar padding
+              Padding(
+                padding: EdgeInsets.only(
+                  left: AppSpacing.lg,
+                  right: AppSpacing.lg,
+                  top: MediaQuery.of(context).padding.top + AppSpacing.md,
+                  bottom: AppSpacing.sm,
+                ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top row: Brand with greeting pill directly to its right
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const BrandLogo(size: 84),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(child: _FamilyGreetingPill(text: '$greeting, Adaptly')),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      // Collapse quick actions behind a single toggle
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final maxDateWidth =
+                                  (constraints.maxWidth * 0.44).clamp(120.0, 190.0);
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: _FamilyQuickActionButton(
+                                      icon: _expanded
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                      label: _expanded
+                                          ? 'Hide quick actions'
+                                          : 'Quick actions',
+                                      onTap: () =>
+                                          setState(() => _expanded = !_expanded),
+                                      bgColor:
+                                          cs.onPrimary.withValues(alpha: 0.12),
+                                      fgColor: cs.onPrimary,
+                                      borderColor:
+                                          cs.onPrimary.withValues(alpha: 0.20),
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  ConstrainedBox(
+                                    constraints:
+                                        BoxConstraints(maxWidth: maxDateWidth),
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: _FamilyTodayPill(text: today),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            child: _expanded
+                                ? Padding(
+                                    padding:
+                                        const EdgeInsets.only(top: AppSpacing.sm),
+                                    child: Wrap(
+                                      spacing: AppSpacing.md,
+                                      runSpacing: AppSpacing.sm,
+                                      children: [
+                                        _FamilyQuickActionButton(
+                                          icon: Icons.school_rounded,
+                                          label: 'Education',
+                                          onTap: () => context.push('/family/education'),
+                                          bgColor: cs.onPrimary
+                                              .withValues(alpha: 0.12),
+                                          fgColor: cs.onPrimary,
+                                          borderColor: cs.onPrimary
+                                              .withValues(alpha: 0.20),
+                                        ),
+                                        _FamilyQuickActionButton(
+                                          icon: Icons.notifications_rounded,
+                                          label: 'Alerts',
+                                          onTap: () => context.go('/family/alerts'),
+                                          bgColor: cs.onPrimary
+                                              .withValues(alpha: 0.12),
+                                          fgColor: cs.onPrimary,
+                                          borderColor: cs.onPrimary
+                                              .withValues(alpha: 0.20),
+                                        ),
+                                        _FamilyQuickActionButton(
+                                          icon: Icons.chat_bubble_rounded,
+                                          label: 'Messages',
+                                          onTap: () => context.push('/messages'),
+                                          bgColor: cs.onPrimary
+                                              .withValues(alpha: 0.12),
+                                          fgColor: cs.onPrimary,
+                                          borderColor: cs.onPrimary
+                                              .withValues(alpha: 0.20),
+                                        ),
+                                        _FamilyQuickActionButton(
+                                          icon: Icons.folder_rounded,
+                                          label: 'Resources',
+                                          onTap: () => context.go('/family/resources'),
+                                          bgColor: cs.onPrimary
+                                              .withValues(alpha: 0.12),
+                                          fgColor: cs.onPrimary,
+                                          borderColor: cs.onPrimary
+                                              .withValues(alpha: 0.20),
+                                        ),
+                                        _FamilyQuickActionButton(
+                                          icon: Icons.favorite_rounded,
+                                          label: 'Health Tracker',
+                                          onTap: () => context.go('/family/health'),
+                                          bgColor: cs.onPrimary
+                                              .withValues(alpha: 0.12),
+                                          fgColor: cs.onPrimary,
+                                          borderColor: cs.onPrimary
+                                              .withValues(alpha: 0.20),
+                                        ),
+                                        _FamilyQuickActionButton(
+                                          icon: Icons.emoji_events_rounded,
+                                          label: 'Journey',
+                                          onTap: () => context.go('/family/journey'),
+                                          bgColor: cs.onPrimary
+                                              .withValues(alpha: 0.12),
+                                          fgColor: cs.onPrimary,
+                                          borderColor: cs.onPrimary
+                                              .withValues(alpha: 0.20),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1F2937) : const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Center(
+      ],
+    );
+  }
+}
+
+class _FamilyQuickActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color bgColor;
+  final Color fgColor;
+  final Color? borderColor;
+
+  const _FamilyQuickActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.bgColor,
+    required this.fgColor,
+    this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
+        constraints: const BoxConstraints(minHeight: 40),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(999),
+          border: borderColor != null
+              ? Border.all(color: borderColor!, width: 1)
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: fgColor, size: 24),
+            const SizedBox(width: 8),
+            Flexible(
               child: Text(
-                patientName.isNotEmpty ? patientName[0].toUpperCase() : '?',
-                style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.textStyles.labelLarge?.withColor(fgColor),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FamilyTodayPill extends StatelessWidget {
+  final String text;
+  const _FamilyTodayPill({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.scale(
+          scale: 0.98 + (t * 0.02),
+          child: child,
+        ),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 7),
+        constraints: const BoxConstraints(minHeight: 40),
+        decoration: BoxDecoration(
+          color: cs.onPrimary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+          border:
+              Border.all(color: cs.onPrimary.withValues(alpha: 0.24), width: 1),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.calendar_month, size: 22, color: cs.onPrimary),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.textStyles.labelLarge?.withColor(cs.onPrimary),
+            ),
           ),
-        ],
+        ]),
+      ),
+    );
+  }
+}
+
+class _FamilyGreetingPill extends StatelessWidget {
+  final String text;
+  const _FamilyGreetingPill({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child:
+            Transform.translate(offset: Offset((1 - t) * 6, 0), child: child),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 6),
+        constraints: const BoxConstraints(minHeight: 36),
+        decoration: BoxDecoration(
+          color: cs.onPrimary.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(999),
+          border:
+              Border.all(color: cs.onPrimary.withValues(alpha: 0.20), width: 1),
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Icon(Icons.waving_hand, size: 20, color: cs.onPrimary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: context.textStyles.labelLarge?.withColor(cs.onPrimary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -439,7 +792,7 @@ class _QuickActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -493,7 +846,7 @@ class _QuickActionCard extends StatelessWidget {
   }
 }
 
-// Welcome Card
+// Next Milestone Card
 class _WelcomeCard extends StatelessWidget {
   final String patientName;
   final Milestone? nextMilestone;
@@ -508,184 +861,212 @@ class _WelcomeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hour = DateTime.now().hour;
-    final greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            colors: allMilestonesCompleted
+                ? [
+                    const Color(0xFF10B981).withValues(alpha: 0.12),
+                    const Color(0xFF059669).withValues(alpha: 0.08),
+                  ]
+                : [
+                    const Color(0xFF2F80FF).withValues(alpha: 0.12),
+                    const Color(0xFF1E5FBF).withValues(alpha: 0.08),
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
-            width: 1,
+            color: allMilestonesCompleted
+                ? const Color(0xFF10B981).withValues(alpha: 0.3)
+                : const Color(0xFF2F80FF).withValues(alpha: 0.3),
+            width: 1.5,
           ),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.grey.withValues(alpha: 0.3),
-            ),
-            child: Stack(
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Content
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Header with icon
+                Row(
                   children: [
-                    Text(
-                      '$greeting, ${patientName.split(' ').first}',
-                      style: context.textStyles.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Here\'s ${patientName.split(' ').first}\'s recovery overview.',
-                      style: context.textStyles.bodyMedium?.copyWith(
-                        color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
                     Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.black.withValues(alpha: 0.3)
-                            : Colors.white.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.2)
-                              : Colors.black.withValues(alpha: 0.1),
-                          width: 1,
+                        gradient: LinearGradient(
+                          colors: allMilestonesCompleted
+                              ? [const Color(0xFF10B981), const Color(0xFF059669)]
+                              : [const Color(0xFF2F80FF), const Color(0xFF1E5FBF)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (allMilestonesCompleted
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF2F80FF))
+                                .withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      child: Row(
+                      child: Icon(
+                        allMilestonesCompleted
+                            ? Icons.emoji_events_rounded
+                            : Icons.flag_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: allMilestonesCompleted 
-                                  ? const Color(0xFF10B981).withValues(alpha: 0.3)
-                                  : const Color(0xFF2F80FF).withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              allMilestonesCompleted 
-                                  ? Icons.emoji_events_rounded 
-                                  : Icons.flag_rounded,
-                              color: allMilestonesCompleted 
-                                  ? const Color(0xFF10B981) 
+                          Text(
+                            allMilestonesCompleted
+                                ? 'Recovery Complete!'
+                                : 'Next Recovery Milestone',
+                            style: context.textStyles.labelMedium?.copyWith(
+                              color: allMilestonesCompleted
+                                  ? const Color(0xFF10B981)
                                   : const Color(0xFF2F80FF),
-                              size: 24,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
                             ),
                           ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  allMilestonesCompleted 
-                                      ? 'Recovery Milestone' 
-                                      : 'Next Recovery Milestone',
-                                  style: context.textStyles.labelSmall?.copyWith(
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.7)
-                                        : Colors.black.withValues(alpha: 0.6),
-                                  ),
-                                ),
-                                Text(
-                                  allMilestonesCompleted 
-                                      ? 'All Complete!' 
-                                      : (nextMilestone?.title ?? 'No milestones yet'),
-                                  style: context.textStyles.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: isDark ? Colors.white : Colors.black,
-                                  ),
-                                ),
-                                if (nextMilestone != null && nextMilestone!.dueDate != null)
-                                  Text(
-                                    'Due ${DateFormat('MMM d, y').format(nextMilestone!.dueDate!)}',
-                                    style: context.textStyles.bodySmall?.copyWith(
-                                      color: isDark
-                                          ? Colors.white.withValues(alpha: 0.7)
-                                          : Colors.black.withValues(alpha: 0.6),
-                                    ),
-                                  )
-                                else if (allMilestonesCompleted)
-                                  Text(
-                                    'Great job on your recovery!',
-                                    style: context.textStyles.bodySmall?.copyWith(
-                                      color: isDark
-                                          ? Colors.white.withValues(alpha: 0.7)
-                                          : Colors.black.withValues(alpha: 0.6),
-                                    ),
-                                  )
-                                else
-                                  Text(
-                                    'Set milestones in the Journey tab',
-                                    style: context.textStyles.bodySmall?.copyWith(
-                                      color: isDark
-                                          ? Colors.white.withValues(alpha: 0.7)
-                                          : Colors.black.withValues(alpha: 0.6),
-                                    ),
-                                  ),
-                              ],
+                          Text(
+                            patientName.split(' ').first,
+                            style: context.textStyles.bodySmall?.copyWith(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.5)
+                                  : Colors.black.withValues(alpha: 0.5),
+                              fontSize: 12,
                             ),
-                          ),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.7)
-                                : Colors.black.withValues(alpha: 0.6),
-                            size: 20,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showLearnMoreSheet(context, patientName, nextMilestone),
-                        icon: Icon(
-                          Icons.info_outline_rounded,
-                          size: 18,
-                          color: isDark ? Colors.white : Colors.black,
-                        ),
-                        label: Text(
-                          'Learn More',
-                          style: TextStyle(
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.3)
-                                : Colors.black.withValues(alpha: 0.2),
-                          ),
-                          backgroundColor: isDark
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : Colors.black.withValues(alpha: 0.05),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.lg,
-                            vertical: AppSpacing.sm,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
-              ),
+                const SizedBox(height: AppSpacing.md),
+                // Milestone content
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.white.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : Colors.black.withValues(alpha: 0.05),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        allMilestonesCompleted
+                            ? 'All Milestones Achieved! 🎉'
+                            : (nextMilestone?.title ?? 'No milestones set yet'),
+                        style: context.textStyles.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                      ),
+                      if (nextMilestone != null && nextMilestone!.dueDate != null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today_rounded,
+                              size: 14,
+                              color: allMilestonesCompleted
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFF2F80FF),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Due ${DateFormat('MMM d, y').format(nextMilestone!.dueDate!)}',
+                              style: context.textStyles.bodySmall?.copyWith(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.7)
+                                    : Colors.black.withValues(alpha: 0.7),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else if (allMilestonesCompleted) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Great job on your recovery!',
+                          style: context.textStyles.bodySmall?.copyWith(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.6)
+                                : Colors.black.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Set milestones in Journey tab',
+                          style: context.textStyles.bodySmall?.copyWith(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.5)
+                                : Colors.black.withValues(alpha: 0.5),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                // Learn More Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showLearnMoreSheet(
+                        context, patientName, nextMilestone),
+                    icon: const Icon(Icons.school_rounded, size: 18),
+                    label: const Text(
+                      'Learn More About Recovery',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: allMilestonesCompleted
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFF2F80FF),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm + 2,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -729,13 +1110,13 @@ class _RecoveryHeroCardState extends State<_RecoveryHeroCard> {
         'steps': 2450,
       };
     }
-    
+
     int? heartRate;
     int? systolic;
     int? diastolic;
     int? sleepQuality;
     int? steps;
-    
+
     for (final entry in widget.recentEntries) {
       heartRate ??= entry.heartRate;
       systolic ??= entry.systolicBP;
@@ -743,7 +1124,7 @@ class _RecoveryHeroCardState extends State<_RecoveryHeroCard> {
       sleepQuality ??= entry.sleepQuality;
       steps ??= entry.steps;
     }
-    
+
     return {
       'heartRate': heartRate ?? 72,
       'systolic': systolic ?? 120,
@@ -765,7 +1146,9 @@ class _RecoveryHeroCardState extends State<_RecoveryHeroCard> {
               controller: _pageController,
               onPageChanged: (page) => setState(() => _currentPage = page),
               children: [
-                _VitalsPage(vitals: _getLatestVitals(), recentEntries: widget.recentEntries),
+                _VitalsPage(
+                    vitals: _getLatestVitals(),
+                    recentEntries: widget.recentEntries),
                 _SchedulePage(),
               ],
             ),
@@ -905,13 +1288,20 @@ class _VitalsPage extends StatelessWidget {
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Mon', style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
-              Text('Tue', style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
-              Text('Wed', style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
-              Text('Thu', style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
-              Text('Fri', style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
-              Text('Sat', style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
-              Text('Sun', style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
+              Text('Mon',
+                  style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
+              Text('Tue',
+                  style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
+              Text('Wed',
+                  style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
+              Text('Thu',
+                  style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
+              Text('Fri',
+                  style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
+              Text('Sat',
+                  style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
+              Text('Sun',
+                  style: TextStyle(color: Color(0xffd2d2d5), fontSize: 14)),
             ],
           ),
         ],
@@ -1013,14 +1403,14 @@ class _ActivityFrequencyBars extends StatelessWidget {
   List<int> _getWeeklyActivity() {
     final now = DateTime.now();
     final weekCounts = List<int>.filled(7, 0);
-    
+
     for (final entry in recentEntries) {
       final daysDiff = now.difference(entry.createdAt).inDays;
       if (daysDiff >= 0 && daysDiff < 7) {
         weekCounts[6 - daysDiff]++;
       }
     }
-    
+
     return weekCounts;
   }
 
@@ -1065,7 +1455,7 @@ class _SchedulePageState extends State<_SchedulePage> {
   final _familyService = FamilyService();
   final _userService = UserService();
   final _blueprintService = RecoveryBlueprintService();
-  
+
   RecoveryBlueprint? _blueprint;
   User? _patient;
   PatientConnection? _connection;
@@ -1097,7 +1487,8 @@ class _SchedulePageState extends State<_SchedulePage> {
         return;
       }
 
-      final blueprint = await _blueprintService.getByUserId(connection.patientId);
+      final blueprint =
+          await _blueprintService.getByUserId(connection.patientId);
       final patient = await _userService.getUserById(connection.patientId);
 
       if (mounted) {
@@ -1135,7 +1526,8 @@ class _SchedulePageState extends State<_SchedulePage> {
         ],
       ),
       child: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xff2f91ff)))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xff2f91ff)))
           : _blueprint == null
               ? const Center(
                   child: Text(
@@ -1157,7 +1549,7 @@ class _SchedulePageState extends State<_SchedulePage> {
 
   Widget _buildScheduleHeader() {
     final monthYear = DateFormat('MMMM yyyy').format(_selectedWeekStart);
-    
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1173,7 +1565,8 @@ class _SchedulePageState extends State<_SchedulePage> {
           IconButton(
             onPressed: () {
               setState(() {
-                _selectedWeekStart = _selectedWeekStart.subtract(const Duration(days: 7));
+                _selectedWeekStart =
+                    _selectedWeekStart.subtract(const Duration(days: 7));
               });
             },
             icon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
@@ -1213,10 +1606,12 @@ class _SchedulePageState extends State<_SchedulePage> {
           IconButton(
             onPressed: () {
               setState(() {
-                _selectedWeekStart = _selectedWeekStart.add(const Duration(days: 7));
+                _selectedWeekStart =
+                    _selectedWeekStart.add(const Duration(days: 7));
               });
             },
-            icon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+            icon:
+                const Icon(Icons.chevron_right, color: Colors.white, size: 20),
             style: IconButton.styleFrom(
               backgroundColor: Colors.white.withValues(alpha: 0.2),
               padding: EdgeInsets.zero,
@@ -1229,7 +1624,8 @@ class _SchedulePageState extends State<_SchedulePage> {
   }
 
   Widget _buildScheduleContent() {
-    final weekDays = List.generate(3, (i) => _selectedWeekStart.add(Duration(days: i)));
+    final weekDays =
+        List.generate(3, (i) => _selectedWeekStart.add(Duration(days: i)));
     final today = DateTime.now();
 
     return SingleChildScrollView(
@@ -1256,7 +1652,9 @@ class _SchedulePageState extends State<_SchedulePage> {
                         Text(
                           DateFormat('EEE').format(day),
                           style: TextStyle(
-                            color: isToday ? const Color(0xff2f91ff) : const Color(0xffa8a8ad),
+                            color: isToday
+                                ? const Color(0xff2f91ff)
+                                : const Color(0xffa8a8ad),
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1264,7 +1662,9 @@ class _SchedulePageState extends State<_SchedulePage> {
                         Text(
                           DateFormat('d').format(day),
                           style: TextStyle(
-                            color: isToday ? const Color(0xff2f91ff) : Colors.white,
+                            color: isToday
+                                ? const Color(0xff2f91ff)
+                                : Colors.white,
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
@@ -1286,7 +1686,7 @@ class _SchedulePageState extends State<_SchedulePage> {
   List<Widget> _buildScheduleRows() {
     final rows = <Widget>[];
     final times = ['12AM', '1AM', '2AM', '3AM', '4AM', '5AM', '6AM', '7AM'];
-    
+
     for (var i = 0; i < times.length; i++) {
       rows.add(
         Row(
@@ -1315,7 +1715,9 @@ class _SchedulePageState extends State<_SchedulePage> {
                         margin: const EdgeInsets.all(4),
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: i == 0 ? const Color(0xffef4444) : const Color(0xff8b5cf6),
+                          color: i == 0
+                              ? const Color(0xffef4444)
+                              : const Color(0xff8b5cf6),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Column(
@@ -1361,7 +1763,9 @@ class _SchedulePageState extends State<_SchedulePage> {
                         margin: const EdgeInsets.all(4),
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: i == 0 ? const Color(0xffef4444) : const Color(0xff8b5cf6),
+                          color: i == 0
+                              ? const Color(0xffef4444)
+                              : const Color(0xff8b5cf6),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Column(
@@ -1407,7 +1811,9 @@ class _SchedulePageState extends State<_SchedulePage> {
                         margin: const EdgeInsets.all(4),
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: i == 0 ? const Color(0xffef4444) : const Color(0xff8b5cf6),
+                          color: i == 0
+                              ? const Color(0xffef4444)
+                              : const Color(0xff8b5cf6),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Column(
@@ -1444,7 +1850,7 @@ class _SchedulePageState extends State<_SchedulePage> {
         ),
       );
     }
-    
+
     return rows;
   }
 }
@@ -1458,7 +1864,7 @@ class _AIInsightsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: Container(
@@ -1482,7 +1888,8 @@ class _AIInsightsCard extends StatelessWidget {
                     color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF8B5CF6), size: 20),
+                  child: const Icon(Icons.auto_awesome_rounded,
+                      color: Color(0xFF8B5CF6), size: 20),
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Text(
@@ -1522,7 +1929,7 @@ class _UpcomingSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: Column(
@@ -1540,7 +1947,8 @@ class _UpcomingSection extends StatelessWidget {
               color: isDark ? const Color(0xFF1F2937) : Colors.white,
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
+                color:
+                    isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
                 width: 1,
               ),
             ),
@@ -1552,7 +1960,11 @@ class _UpcomingSection extends StatelessWidget {
                   subtitle: 'Tomorrow • 10:30 AM',
                   color: const Color(0xFF2F80FF),
                 ),
-                Divider(color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB), height: 1),
+                Divider(
+                    color: isDark
+                        ? const Color(0xFF2A3441)
+                        : const Color(0xFFE5E7EB),
+                    height: 1),
                 _UpcomingItem(
                   icon: Icons.medication_rounded,
                   title: 'Medication Reminder',
@@ -1560,7 +1972,11 @@ class _UpcomingSection extends StatelessWidget {
                   color: const Color(0xFFF59E0B),
                 ),
                 if (nextMilestone != null) ...[
-                  Divider(color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB), height: 1),
+                  Divider(
+                      color: isDark
+                          ? const Color(0xFF2A3441)
+                          : const Color(0xFFE5E7EB),
+                      height: 1),
                   _UpcomingItem(
                     icon: Icons.emoji_events_rounded,
                     title: nextMilestone!.title,
@@ -1595,7 +2011,7 @@ class _UpcomingItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Row(
@@ -1653,7 +2069,7 @@ class _DrawerItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return ListTile(
       leading: Icon(icon, color: const Color(0xFF2F80FF)),
       title: Text(
@@ -1663,7 +2079,8 @@ class _DrawerItem extends StatelessWidget {
         ),
       ),
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: 4),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: 4),
     );
   }
 }
@@ -1722,12 +2139,14 @@ class _AnimatedSectionState extends State<_AnimatedSection>
 }
 
 // Learn More Sheet Function
-void _showLearnMoreSheet(BuildContext context, String patientName, Milestone? nextMilestone) {
+void _showLearnMoreSheet(
+    BuildContext context, String patientName, Milestone? nextMilestone) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => _LearnMoreSheet(patientName: patientName, nextMilestone: nextMilestone),
+    builder: (context) =>
+        _LearnMoreSheet(patientName: patientName, nextMilestone: nextMilestone),
   );
 }
 
@@ -1749,7 +2168,7 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
   final _organizationService = OrganizationService();
   final _hospitalService = HospitalService();
   final _vrAgencyService = VRAgencyService();
-  
+
   List<EducationResource> _educationResources = [];
   List<Organization> _organizations = [];
   List<Hospital> _hospitals = [];
@@ -1783,7 +2202,7 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
       }
 
       final patient = await _userService.getUserById(connection.patientId);
-      
+
       // Load patient-specific data
       final now = DateTime.now();
       final thirtyDaysAgo = now.subtract(const Duration(days: 30));
@@ -1791,15 +2210,15 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
           connection.patientId, thirtyDaysAgo, now);
       final recentEntries = await _familyService
           .getPatientRecentEntries(connection.patientId, limit: 30);
-      
+
       // Load ONLY NIH and MedlinePlus education resources
       final educationList = _educationService.all().where((resource) {
         // Only show resources from NIH or MedlinePlus
         final source = resource.sourceName.toLowerCase();
-        return source.contains('nih') || 
-               source.contains('medlineplus') || 
-               source.contains('medline plus') ||
-               source.contains('nlm');
+        return source.contains('nih') ||
+            source.contains('medlineplus') ||
+            source.contains('medline plus') ||
+            source.contains('nlm');
       }).toList();
 
       // Load local resources (organizations and hospitals)
@@ -1809,14 +2228,14 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
       // Load VR agencies if applicable based on patient conditions
       List<VRAgency> vrAgencies = [];
       bool showVR = false;
-      
+
       if (patient != null) {
         // Check if VR agencies are applicable
         showVR = _vrAgencyService.areVRAgenciesApplicable(
           conditionIds: patient.conditions,
           recoveryPhase: patient.preferences['recoveryPhase'] as String?,
         );
-        
+
         if (showVR) {
           // Try to get agencies for patient's state
           final patientState = patient.preferences['state'] as String?;
@@ -1853,7 +2272,7 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return DraggableScrollableSheet(
       initialChildSize: 0.9,
       minChildSize: 0.5,
@@ -1871,13 +2290,15 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
+                color:
+                    isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.lg),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.lg),
               child: Row(
                 children: [
                   Expanded(
@@ -1886,20 +2307,24 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
                       children: [
                         Text(
                           'Recovery Resources',
-                          style: context.textStyles.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                          style: context.textStyles.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'Personalized resources for ${widget.patientName.split(' ').first}\'s care journey',
                           style: context.textStyles.bodyMedium?.withColor(
-                            isDark ? const Color(0xFF9CA3AF) : const Color(0xFF64748B),
+                            isDark
+                                ? const Color(0xFF9CA3AF)
+                                : const Color(0xFF64748B),
                           ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: isDark ? Colors.white : Colors.black),
+                    icon: Icon(Icons.close,
+                        color: isDark ? Colors.white : Colors.black),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -1938,26 +2363,35 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
                           color: const Color(0xFF10B981),
                         ),
                         const SizedBox(height: AppSpacing.md),
-                        if (_organizations.isEmpty && _hospitals.isEmpty && !_showVRAgencies)
+                        if (_organizations.isEmpty &&
+                            _hospitals.isEmpty &&
+                            !_showVRAgencies)
                           _EmptyState(message: 'No local resources available')
                         else ...[
                           if (_organizations.isNotEmpty) ...[
-                            ..._organizations.take(10).map((org) => _LocalResourceCard(
-                              icon: Icons.business_rounded,
-                              title: org.name,
-                              subtitle: org.slug.isNotEmpty ? org.slug : 'Community Organization',
-                              type: 'Organization',
-                              color: const Color(0xFF10B981),
-                            )),
+                            ..._organizations
+                                .take(10)
+                                .map((org) => _LocalResourceCard(
+                                      icon: Icons.business_rounded,
+                                      title: org.name,
+                                      subtitle: org.slug.isNotEmpty
+                                          ? org.slug
+                                          : 'Community Organization',
+                                      type: 'Organization',
+                                      color: const Color(0xFF10B981),
+                                    )),
                           ],
                           if (_hospitals.isNotEmpty) ...[
-                            ..._hospitals.take(10).map((hospital) => _LocalResourceCard(
-                              icon: Icons.local_hospital_rounded,
-                              title: hospital.name,
-                              subtitle: hospital.city ?? 'Healthcare Facility',
-                              type: 'Hospital',
-                              color: const Color(0xFF2F80FF),
-                            )),
+                            ..._hospitals
+                                .take(10)
+                                .map((hospital) => _LocalResourceCard(
+                                      icon: Icons.local_hospital_rounded,
+                                      title: hospital.name,
+                                      subtitle: hospital.city ??
+                                          'Healthcare Facility',
+                                      type: 'Hospital',
+                                      color: const Color(0xFF2F80FF),
+                                    )),
                           ],
                         ],
                         const SizedBox(height: AppSpacing.xl),
@@ -1969,7 +2403,8 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
                             color: const Color(0xFFEF4444),
                           ),
                           const SizedBox(height: AppSpacing.md),
-                          ..._vrAgencies.map((agency) => _VRAgencyCard(agency: agency)),
+                          ..._vrAgencies
+                              .map((agency) => _VRAgencyCard(agency: agency)),
                           const SizedBox(height: AppSpacing.xl),
                         ],
                         // NIH & MedlinePlus Education Resources ONLY
@@ -1980,9 +2415,11 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
                         ),
                         const SizedBox(height: AppSpacing.md),
                         if (_educationResources.isEmpty)
-                          _EmptyState(message: 'No NIH/MedlinePlus resources available')
+                          _EmptyState(
+                              message: 'No NIH/MedlinePlus resources available')
                         else
-                          ..._educationResources.map((resource) => _EducationResourceCard(resource: resource)),
+                          ..._educationResources.map((resource) =>
+                              _EducationResourceCard(resource: resource)),
                         const SizedBox(height: AppSpacing.xxl),
                       ],
                     ),
@@ -2000,7 +2437,8 @@ class _SectionHeader extends StatelessWidget {
   final String title;
   final Color color;
 
-  const _SectionHeader({required this.icon, required this.title, required this.color});
+  const _SectionHeader(
+      {required this.icon, required this.title, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -2017,7 +2455,8 @@ class _SectionHeader extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         Text(
           title,
-          style: context.textStyles.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          style: context.textStyles.titleLarge
+              ?.copyWith(fontWeight: FontWeight.bold),
         ),
       ],
     );
@@ -2033,7 +2472,7 @@ class _MilestoneCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
@@ -2049,7 +2488,8 @@ class _MilestoneCard extends StatelessWidget {
         children: [
           Text(
             milestone.title,
-            style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            style: context.textStyles.titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
           if (milestone.description?.isNotEmpty ?? false) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -2064,11 +2504,13 @@ class _MilestoneCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             Row(
               children: [
-                Icon(Icons.calendar_today, size: 14, color: const Color(0xFF2F80FF)),
+                Icon(Icons.calendar_today,
+                    size: 14, color: const Color(0xFF2F80FF)),
                 const SizedBox(width: 4),
                 Text(
                   'Due ${DateFormat('MMM d, y').format(milestone.dueDate!)}',
-                  style: context.textStyles.bodySmall?.withColor(const Color(0xFF2F80FF)),
+                  style: context.textStyles.bodySmall
+                      ?.withColor(const Color(0xFF2F80FF)),
                 ),
               ],
             ),
@@ -2098,7 +2540,7 @@ class _LocalResourceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -2127,7 +2569,8 @@ class _LocalResourceCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: context.textStyles.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  style: context.textStyles.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -2135,7 +2578,9 @@ class _LocalResourceCard extends StatelessWidget {
                   Text(
                     subtitle,
                     style: context.textStyles.bodySmall?.withColor(
-                      isDark ? const Color(0xFF9CA3AF) : const Color(0xFF64748B),
+                      isDark
+                          ? const Color(0xFF9CA3AF)
+                          : const Color(0xFF64748B),
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -2171,7 +2616,7 @@ class _EducationResourceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -2191,7 +2636,8 @@ class _EducationResourceCard extends StatelessWidget {
               color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.menu_book_rounded, color: const Color(0xFF8B5CF6), size: 20),
+            child: Icon(Icons.menu_book_rounded,
+                color: const Color(0xFF8B5CF6), size: 20),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -2200,13 +2646,16 @@ class _EducationResourceCard extends StatelessWidget {
               children: [
                 Text(
                   resource.title,
-                  style: context.textStyles.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  style: context.textStyles.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 if (resource.category.isNotEmpty)
                   Text(
                     resource.category,
                     style: context.textStyles.bodySmall?.withColor(
-                      isDark ? const Color(0xFF9CA3AF) : const Color(0xFF64748B),
+                      isDark
+                          ? const Color(0xFF9CA3AF)
+                          : const Color(0xFF64748B),
                     ),
                   ),
               ],
@@ -2238,7 +2687,7 @@ class _PatientSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     if (patient == null || stats == null) {
       return const SizedBox.shrink();
     }
@@ -2279,13 +2728,15 @@ class _PatientSummaryCard extends StatelessWidget {
                   color: const Color(0xFF2F80FF).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.analytics_rounded, color: Color(0xFF2F80FF), size: 20),
+                child: const Icon(Icons.analytics_rounded,
+                    color: Color(0xFF2F80FF), size: 20),
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
                   '30-Day Recovery Summary',
-                  style: context.textStyles.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  style: context.textStyles.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -2320,7 +2771,11 @@ class _PatientSummaryCard extends StatelessWidget {
                   label: 'Avg Pain Level',
                   value: avgPain.toStringAsFixed(1),
                   icon: Icons.healing_rounded,
-                  color: avgPain <= 3 ? const Color(0xFF10B981) : avgPain <= 6 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
+                  color: avgPain <= 3
+                      ? const Color(0xFF10B981)
+                      : avgPain <= 6
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFFEF4444),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -2329,7 +2784,11 @@ class _PatientSummaryCard extends StatelessWidget {
                   label: 'Avg Mood',
                   value: avgMood.toStringAsFixed(1),
                   icon: Icons.sentiment_satisfied_rounded,
-                  color: avgMood >= 7 ? const Color(0xFF10B981) : avgMood >= 4 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
+                  color: avgMood >= 7
+                      ? const Color(0xFF10B981)
+                      : avgMood >= 4
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFFEF4444),
                 ),
               ),
             ],
@@ -2356,7 +2815,7 @@ class _SummaryMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -2400,7 +2859,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
@@ -2432,7 +2891,7 @@ class _VRAgencyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -2455,7 +2914,8 @@ class _VRAgencyCard extends StatelessWidget {
                   color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.work_rounded, color: Color(0xFFEF4444), size: 20),
+                child: const Icon(Icons.work_rounded,
+                    color: Color(0xFFEF4444), size: 20),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -2464,7 +2924,8 @@ class _VRAgencyCard extends StatelessWidget {
                   children: [
                     Text(
                       agency.agencyName,
-                      style: context.textStyles.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                      style: context.textStyles.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2472,7 +2933,9 @@ class _VRAgencyCard extends StatelessWidget {
                     Text(
                       '${agency.jurisdiction} • ${agency.agencyTypeLabel}',
                       style: context.textStyles.bodySmall?.withColor(
-                        isDark ? const Color(0xFF9CA3AF) : const Color(0xFF64748B),
+                        isDark
+                            ? const Color(0xFF9CA3AF)
+                            : const Color(0xFF64748B),
                       ),
                     ),
                   ],
@@ -2531,7 +2994,7 @@ class _ContactButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
