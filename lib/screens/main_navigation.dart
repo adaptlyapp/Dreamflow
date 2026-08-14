@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/tutorial_service.dart';
+import 'package:wellspring/services/condition_service.dart';
 import 'package:showcaseview/showcaseview.dart';
 
 enum PatientTab {
@@ -39,7 +42,6 @@ class _MainNavigationState extends State<MainNavigation> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
       body: widget.child,
       extendBody: true,
       bottomNavigationBar: Showcase(
@@ -91,79 +93,139 @@ class AdaptlyBottomNav extends StatelessWidget {
     required this.onTabSelected,
   });
 
+  void _navigateToPlan(BuildContext context) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final conditions = userProvider.currentUser?.conditions ?? [];
+    
+    if (conditions.isEmpty) {
+      // If no conditions, show a message or navigate to conditions screen
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add a condition first')),
+      );
+      context.go('/conditions');
+    } else {
+      // Get condition name and navigate to the plan editor
+      try {
+        final conditionService = ConditionService();
+        final condition = await conditionService.getConditionById(conditions.first);
+        if (context.mounted) {
+          context.push('/plan/${conditions.first}', extra: condition?.name ?? 'Plan');
+        }
+      } catch (e) {
+        debugPrint('Error loading condition: $e');
+        if (context.mounted) {
+          context.push('/plan/${conditions.first}', extra: 'Plan');
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 78,
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 22),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xff111113).withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xff242428)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      clipBehavior: Clip.none,
+      children: [
+        // Bottom nav bar
+        Container(
+          height: 78,
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 22),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xff111113).withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xff242428)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _AdaptlyNavItem(
-            tab: PatientTab.home,
-            selectedTab: selectedTab,
-            icon: Icons.home_rounded,
-            label: 'Home',
-            onTap: onTabSelected,
-            tutorialKey: TutorialKeys.navHome,
-            tutorialTitle: 'Home',
-            tutorialDescription: 'This is your daily starting point. You\'ll see guidance, goals, updates, and reminders here.',
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _AdaptlyNavItem(
+                tab: PatientTab.home,
+                selectedTab: selectedTab,
+                icon: Icons.home_rounded,
+                label: 'Home',
+                onTap: onTabSelected,
+                tutorialKey: TutorialKeys.navHome,
+                tutorialTitle: 'Home',
+                tutorialDescription: 'This is your daily starting point. You\'ll see guidance, goals, updates, and reminders here.',
+              ),
+              _AdaptlyNavItem(
+                tab: PatientTab.conditions,
+                selectedTab: selectedTab,
+                icon: Icons.medical_information_outlined,
+                label: 'Condition',
+                onTap: onTabSelected,
+                tutorialKey: TutorialKeys.navConditions,
+                tutorialTitle: 'Condition',
+                tutorialDescription: 'Find guidance and advice tailored to specific conditions. These sections help you understand what to expect and how to manage daily life.',
+              ),
+              const SizedBox(width: 60), // Space for ARIE button
+              _AdaptlyNavItem(
+                tab: PatientTab.tracker,
+                selectedTab: selectedTab,
+                icon: Icons.insert_chart_outlined,
+                label: 'Tracker',
+                onTap: onTabSelected,
+                tutorialKey: TutorialKeys.navTracker,
+                tutorialTitle: 'Tracker',
+                tutorialDescription: 'Use this to log things like pain, sleep, energy, and symptoms. Over time, this helps you notice patterns and stay informed.',
+              ),
+              _AdaptlyNavItem(
+                tab: PatientTab.profile,
+                selectedTab: selectedTab,
+                icon: Icons.person_outline,
+                label: 'Profile',
+                onTap: onTabSelected,
+                tutorialKey: TutorialKeys.navProfile,
+                tutorialTitle: 'Profile & Settings',
+                tutorialDescription: 'Update your information, manage preferences, and control notifications anytime.',
+              ),
+            ],
           ),
-          _AdaptlyNavItem(
-            tab: PatientTab.conditions,
-            selectedTab: selectedTab,
-            icon: Icons.medical_information_outlined,
-            label: 'Condition',
-            onTap: onTabSelected,
-            tutorialKey: TutorialKeys.navConditions,
-            tutorialTitle: 'Condition',
-            tutorialDescription: 'Find guidance and advice tailored to specific conditions. These sections help you understand what to expect and how to manage daily life.',
+        ),
+        
+        // My Plan floating action button
+        Positioned(
+          bottom: 52,
+          child: GestureDetector(
+            onTap: () => _navigateToPlan(context),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xff4da3ff),
+                    Color(0xff2f91ff),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xff2f91ff).withValues(alpha: 0.4),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.auto_awesome,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
           ),
-          _AdaptlyNavItem(
-            tab: PatientTab.community,
-            selectedTab: selectedTab,
-            icon: Icons.people_outline,
-            label: 'Hub',
-            onTap: onTabSelected,
-            tutorialKey: TutorialKeys.navCommunity,
-            tutorialTitle: 'Community',
-            tutorialDescription: 'Connect with others who understand what you\'re going through. Ask questions, share experiences, or just read along.',
-          ),
-          _AdaptlyNavItem(
-            tab: PatientTab.tracker,
-            selectedTab: selectedTab,
-            icon: Icons.insert_chart_outlined,
-            label: 'Tracker',
-            onTap: onTabSelected,
-            tutorialKey: TutorialKeys.navTracker,
-            tutorialTitle: 'Tracker',
-            tutorialDescription: 'Use this to log things like pain, sleep, energy, and symptoms. Over time, this helps you notice patterns and stay informed.',
-          ),
-          _AdaptlyNavItem(
-            tab: PatientTab.profile,
-            selectedTab: selectedTab,
-            icon: Icons.person_outline,
-            label: 'Profile',
-            onTap: onTabSelected,
-            tutorialKey: TutorialKeys.navProfile,
-            tutorialTitle: 'Profile & Settings',
-            tutorialDescription: 'Update your information, manage preferences, and control notifications anytime.',
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

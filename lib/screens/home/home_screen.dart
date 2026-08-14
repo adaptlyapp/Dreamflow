@@ -21,6 +21,7 @@ import 'package:showcaseview/showcaseview.dart';
 import 'package:wellspring/services/tutorial_service.dart';
 import 'package:wellspring/services/application_service.dart';
 import 'package:wellspring/widgets/brand_logo.dart';
+import 'package:wellspring/widgets/help_type_chip.dart';
 import 'package:wellspring/widgets/skeletons.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wellspring/services/notification_service.dart';
@@ -113,10 +114,9 @@ class _HomeScreenState extends State<HomeScreen>
     // Cancel any existing subscription
     _trackerSub?.cancel();
     try {
-      _trackerSub =
-          _trackerService
-              .recentEntriesStream(userId, limit: 5, includeNutrition: false)
-              .listen((_) {
+      _trackerSub = _trackerService
+          .recentEntriesStream(userId, limit: 5, includeNutrition: false)
+          .listen((_) {
         // Whenever entries change, refresh the snapshot section
         _loadSnapshot();
       }, onError: (e) {
@@ -136,7 +136,6 @@ class _HomeScreenState extends State<HomeScreen>
     ]);
     if (mounted) setState(() => _isLoading = false);
   }
-
 
   Future<void> _loadMedications() async {
     final userId = context.read<UserProvider>().currentUser?.id;
@@ -177,7 +176,7 @@ class _HomeScreenState extends State<HomeScreen>
     // Add to existing medications list
     final updatedMedications = [...user.medications, medication];
     final updatedUser = user.copyWith(medications: updatedMedications);
-    
+
     await userProvider.updateUser(updatedUser);
     debugPrint('Home._addMedication: Added ${medication.name}');
     // Schedule local notification reminders for this medication's times.
@@ -204,29 +203,37 @@ class _HomeScreenState extends State<HomeScreen>
       final now = DateTime.now();
       // Check if there's already a medication-only entry for today
       // This keeps medication logs separate from full health tracker entries
-      final existingMedEntry = await _trackerService.getMedicationOnlyEntryByDate(userId, now);
+      final existingMedEntry =
+          await _trackerService.getMedicationOnlyEntryByDate(userId, now);
 
       if (existingMedEntry != null) {
         // Update existing medication-only entry - add medication if not already present
-        final currentMeds = List<String>.from(existingMedEntry.medications ?? []);
+        final currentMeds =
+            List<String>.from(existingMedEntry.medications ?? []);
         final medName = medication.name;
-        
+
         if (!currentMeds.contains(medName)) {
           currentMeds.add(medName);
         }
-        
+
         // Also add to medicationLogs with timestamp
-        final currentLogs = List<MedicationLog>.from(existingMedEntry.medicationLogs ?? []);
+        final currentLogs =
+            List<MedicationLog>.from(existingMedEntry.medicationLogs ?? []);
         currentLogs.add(MedicationLog(
           name: medName,
-          doseMg: medication.dosage != null ? int.tryParse(medication.dosage!.replaceAll(RegExp(r'[^0-9]'), '')) : null,
+          doseMg: medication.dosage != null
+              ? int.tryParse(
+                  medication.dosage!.replaceAll(RegExp(r'[^0-9]'), ''))
+              : null,
           takenAt: now.toIso8601String(),
         ));
-        
+
         // Build updated customFields with medicationLogs
-        final updatedCustomFields = Map<String, dynamic>.from(existingMedEntry.customFields ?? {});
-        updatedCustomFields['medicationLogs'] = currentLogs.map((l) => l.toJson()).toList();
-        
+        final updatedCustomFields =
+            Map<String, dynamic>.from(existingMedEntry.customFields ?? {});
+        updatedCustomFields['medicationLogs'] =
+            currentLogs.map((l) => l.toJson()).toList();
+
         final updatedEntry = TrackerEntry(
           id: existingMedEntry.id,
           userId: userId,
@@ -236,9 +243,10 @@ class _HomeScreenState extends State<HomeScreen>
           createdAt: existingMedEntry.createdAt,
           updatedAt: now,
         );
-        
+
         await _trackerService.updateEntry(updatedEntry);
-        debugPrint('Home._quickLogMedication: Updated today\'s medication entry with ${medication.name}');
+        debugPrint(
+            'Home._quickLogMedication: Updated today\'s medication entry with ${medication.name}');
       } else {
         // Create new medication-only entry for today
         final newEntry = TrackerEntry(
@@ -250,7 +258,10 @@ class _HomeScreenState extends State<HomeScreen>
             'medicationLogs': [
               MedicationLog(
                 name: medication.name,
-                doseMg: medication.dosage != null ? int.tryParse(medication.dosage!.replaceAll(RegExp(r'[^0-9]'), '')) : null,
+                doseMg: medication.dosage != null
+                    ? int.tryParse(
+                        medication.dosage!.replaceAll(RegExp(r'[^0-9]'), ''))
+                    : null,
                 takenAt: now.toIso8601String(),
               ).toJson(),
             ],
@@ -258,9 +269,10 @@ class _HomeScreenState extends State<HomeScreen>
           createdAt: now,
           updatedAt: now,
         );
-        
+
         await _trackerService.addEntry(newEntry);
-        debugPrint('Home._quickLogMedication: Created new medication entry with ${medication.name}');
+        debugPrint(
+            'Home._quickLogMedication: Created new medication entry with ${medication.name}');
       }
 
       if (mounted) {
@@ -382,25 +394,23 @@ class _HomeScreenState extends State<HomeScreen>
         .map((e) => (e.heartRate!).toDouble())
         .toList();
     final seriesHR = _lastN(hrVals, 7);
-    
-    final weightVals = byOldest
-        .where((e) => e.weight != null)
-        .map((e) => e.weight!)
-        .toList();
+
+    final weightVals =
+        byOldest.where((e) => e.weight != null).map((e) => e.weight!).toList();
     final seriesWeight = _lastN(weightVals, 7);
-    
+
     final tempVals = byOldest
         .where((e) => e.temperature != null)
         .map((e) => e.temperature!)
         .toList();
     final seriesTemp = _lastN(tempVals, 7);
-    
+
     final spasmVals = byOldest
         .where((e) => e.spasmFrequency != null)
         .map((e) => (e.spasmFrequency!).toDouble())
         .toList();
     final seriesSpasm = _lastN(spasmVals, 7);
-    
+
     // Calculate mood trend from recent entries
     final recentMoods = byOldest
         .where((e) => e.mood != null && e.mood!.isNotEmpty)
@@ -536,10 +546,12 @@ class _HomeScreenState extends State<HomeScreen>
             .toDouble();
     final double dWeight = usedFallback
         ? 0.0
-        : ((stats7['avgWeight'] ?? 0) - (statsPrev['avgWeight'] ?? 0)).toDouble();
+        : ((stats7['avgWeight'] ?? 0) - (statsPrev['avgWeight'] ?? 0))
+            .toDouble();
     final double dTemp = usedFallback
         ? 0.0
-        : ((stats7['avgTemperature'] ?? 0) - (statsPrev['avgTemperature'] ?? 0)).toDouble();
+        : ((stats7['avgTemperature'] ?? 0) - (statsPrev['avgTemperature'] ?? 0))
+            .toDouble();
     final double dSpasm = usedFallback
         ? 0.0
         : ((stats7['avgSpasm'] ?? 0) - (statsPrev['avgSpasm'] ?? 0)).toDouble();
@@ -591,7 +603,8 @@ class _HomeScreenState extends State<HomeScreen>
       final userProvider = context.read<UserProvider>();
       var userId = userProvider.currentUser?.id;
       if (userId == null) {
-        debugPrint('Home._loadGoals: no user loaded yet; attempting loadUser()');
+        debugPrint(
+            'Home._loadGoals: no user loaded yet; attempting loadUser()');
         await userProvider.loadUser();
         userId = userProvider.currentUser?.id;
       }
@@ -1178,14 +1191,17 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _openContactSupport() async {
-    final email = Uri.parse('mailto:adaptlyapp@gmail.com?subject=Support Request');
+    final email =
+        Uri.parse('mailto:adaptlyapp@gmail.com?subject=Support Request');
     try {
       if (await canLaunchUrl(email)) {
         await launchUrl(email);
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not open email app. Please email us at adaptlyapp@gmail.com')),
+            const SnackBar(
+                content: Text(
+                    'Could not open email app. Please email us at adaptlyapp@gmail.com')),
           );
         }
       }
@@ -1193,7 +1209,9 @@ class _HomeScreenState extends State<HomeScreen>
       debugPrint('Home._openContactSupport error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open email app. Please email us at adaptlyapp@gmail.com')),
+          const SnackBar(
+              content: Text(
+                  'Could not open email app. Please email us at adaptlyapp@gmail.com')),
         );
       }
     }
@@ -1335,199 +1353,218 @@ class _HomeScreenState extends State<HomeScreen>
     final user = context.watch<UserProvider>().currentUser;
     final showOnboardingReminder = user != null && !user.onboardingCompleted;
     return Scaffold(
-      body: _isLoading
-          ? const Center(child: CenteredLoadingSkeleton())
-          : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _HomeHeader(
-                    onAddEntry: () async {
-                      await context.push('/tracker/add');
-                      await _loadSnapshot();
-                    },
-                    onOpenPlan: _openPlanForUser,
-                    onOpenCommunities: () => context.push('/communities'),
-                    onOpenResources: () => context.push('/resources'),
-                    onSubmitFeedback: _openSubmitFeedback,
-                    onOpenTherapist: () => context.push('/therapist'),
-                    onOpenEducation: () => context.push('/education'),
-                    onContactSupport: _openContactSupport,
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                              if (showOnboardingReminder)
-                                Padding(
-                                  padding: EdgeInsets.fromLTRB(
-                                      AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
-                                  child: _OnboardingReminderBanner(
-                                    onFinish: () => context.go('/onboarding'),
-                                  ),
-                                ),
-                              SizedBox(height: AppSpacing.sm),
-                              // Move Next Step to the top, above Health Snapshot
-                              _AnimatedSection(
-                        delayMs: 50,
+      body: Stack(
+        children: [
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/ChatGPT_Image_Aug_4_2026_01_35_03_PM.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Content
+          _isLoading
+              ? const Center(child: CenteredLoadingSkeleton())
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _HomeHeader(
+                      onAddEntry: () async {
+                        await context.push('/tracker/add');
+                        await _loadSnapshot();
+                      },
+                      onOpenPlan: _openPlanForUser,
+                      onOpenCommunities: () => context.push('/communities'),
+                      onOpenResources: () => context.push('/resources'),
+                      onSubmitFeedback: _openSubmitFeedback,
+                      onOpenTherapist: () => context.push('/therapist'),
+                      onOpenEducation: () => context.push('/education'),
+                      onContactSupport: _openContactSupport,
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 100),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: AppSpacing.lg),
-                              child: Text(
-                                'Patient Journey',
-                                style: Theme.of(context).textTheme.titleLarge,
+                            if (showOnboardingReminder)
+                              Padding(
+                                padding: EdgeInsets.fromLTRB(AppSpacing.lg,
+                                    AppSpacing.lg, AppSpacing.lg, 0),
+                                child: _OnboardingReminderBanner(
+                                  onFinish: () => context.go('/onboarding'),
+                                ),
                               ),
-                            ),
-                            SizedBox(height: AppSpacing.xs),
-                            Showcase(
-                              key: TutorialKeys.homeNextStep,
-                              title: 'Your Next Step',
-                              description:
-                                  'Complete, snooze, or learn more to keep momentum.',
-                              child: _nextStep != null
-                                  ? Padding(
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: AppSpacing.lg),
-                                      child: _NextStepCard(
-                                        milestone: _nextStep!,
-                                        onMarkDone: () async {
-                                        try {
-                                          final uid = context
-                                              .read<UserProvider>()
-                                              .currentUser
-                                              ?.id;
-                                          if (uid == null)
-                                            throw Exception('No user');
-                                          debugPrint(
-                                              'Home: Marking milestone ${_nextStep!.id} as completed');
-                                          await _milestoneService
-                                              .updateFields(
-                                                  uid,
-                                                  _nextStep!.id,
-                                                  {'completed': true});
-                                          debugPrint(
-                                              'Home: Milestone updated successfully, reloading next step');
-                                          await _loadNextStep();
-                                          debugPrint(
-                                              'Home: Next step reloaded');
-                                        } catch (e) {
-                                          debugPrint(
-                                              'Home: Error marking done: $e');
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                                content: Text(
-                                                    'Failed to update step: $e')),
-                                          );
-                                        }
-                                      },
-                                      onSnooze: (days) async {
-                                        await _snoozeNextStep(days);
-                                      },
-                                      onOpenPlan: _openPlanForUser,
-                                    ),
-                                  )
-                                : Padding(
+                            SizedBox(height: AppSpacing.sm),
+                            // Move Next Step to the top, above Health Snapshot
+                            _AnimatedSection(
+                              delayMs: 50,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
                                     padding: EdgeInsets.symmetric(
                                         horizontal: AppSpacing.lg),
-                                    child: _NoNextStepCard(
-                                        onOpenPlan: _openPlanForUser,
-                                        isAllCompleted: _allStepsCompleted),
+                                    child: Text(
+                                      'Patient Plan',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge,
+                                    ),
                                   ),
+                                  SizedBox(height: AppSpacing.xs),
+                                  Showcase(
+                                    key: TutorialKeys.homeNextStep,
+                                    title: 'Your Next Step',
+                                    description:
+                                        'Complete, snooze, or learn more to keep momentum.',
+                                    child: _nextStep != null
+                                        ? Padding(
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: AppSpacing.lg),
+                                            child: _NextStepCard(
+                                              milestone: _nextStep!,
+                                              onMarkDone: () async {
+                                                try {
+                                                  final uid = context
+                                                      .read<UserProvider>()
+                                                      .currentUser
+                                                      ?.id;
+                                                  if (uid == null)
+                                                    throw Exception('No user');
+                                                  debugPrint(
+                                                      'Home: Marking milestone ${_nextStep!.id} as completed');
+                                                  await _milestoneService
+                                                      .updateFields(
+                                                          uid,
+                                                          _nextStep!.id,
+                                                          {'completed': true});
+                                                  debugPrint(
+                                                      'Home: Milestone updated successfully, reloading next step');
+                                                  await _loadNextStep();
+                                                  debugPrint(
+                                                      'Home: Next step reloaded');
+                                                } catch (e) {
+                                                  debugPrint(
+                                                      'Home: Error marking done: $e');
+                                                  ScaffoldMessenger.of(context)
+                                                      .showSnackBar(
+                                                    SnackBar(
+                                                        content: Text(
+                                                            'Failed to update step: $e')),
+                                                  );
+                                                }
+                                              },
+                                              onSnooze: (days) async {
+                                                await _snoozeNextStep(days);
+                                              },
+                                              onOpenPlan: _openPlanForUser,
+                                            ),
+                                          )
+                                        : Padding(
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: AppSpacing.lg),
+                                            child: _NoNextStepCard(
+                                                onOpenPlan: _openPlanForUser,
+                                                isAllCompleted:
+                                                    _allStepsCompleted),
+                                          ),
+                                  ),
+                                ],
+                              ),
                             ),
+                            SizedBox(height: AppSpacing.sm),
+                            // Daily Goals
+                            _AnimatedSection(
+                              delayMs: 75,
+                              child: _GoalsSection(
+                                goals: _goals,
+                                onIncrement: (goalId) async {
+                                  await _goalService.incrementProgress(goalId);
+                                  await _loadGoals();
+                                },
+                                onAdd: () => _addOrEditGoal(),
+                                onEdit: (g) => _addOrEditGoal(existing: g),
+                                onQuickAdd: ({
+                                  required String title,
+                                  String? description,
+                                  int target = 5,
+                                  String period = 'weekly',
+                                  String? linked,
+                                }) =>
+                                    _quickAddGoal(
+                                  title: title,
+                                  description: description,
+                                  target: target,
+                                  period: period,
+                                  linked: linked,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: AppSpacing.sm),
+                            // Medication Tracker Section (below Daily Goals, above Health Snapshot)
+                            _AnimatedSection(
+                              delayMs: 100,
+                              child: _MedicationTrackerSection(
+                                medications: user?.medications ?? [],
+                                isExpanded: _medicationTrackerExpanded,
+                                isLoading: _loadingMedications,
+                                onToggleExpand: () => setState(() =>
+                                    _medicationTrackerExpanded =
+                                        !_medicationTrackerExpanded),
+                                onAddEntry: () async {
+                                  await context.push('/tracker/add');
+                                  await _loadMedications();
+                                },
+                                onEditMedications: () =>
+                                    context.push('/profile'),
+                                onQuickLogMedication: _quickLogMedication,
+                                onAddMedication: _addMedication,
+                              ),
+                            ),
+                            SizedBox(height: AppSpacing.sm),
+                            // Health Snapshot
+                            _AnimatedSection(
+                              delayMs: 130,
+                              child: _HealthSnapshotSection(
+                                stats7: _stats7,
+                                statsPrev7: _statsPrev7,
+                                bladderStreak: _bladderStreak,
+                                bowelStreak: _bowelStreak,
+                                painSeries: _painSeries7,
+                                sleepSeries: _sleepSeries7,
+                                energySeries: _energySeries7,
+                                stepsSeries: _stepsSeries7,
+                                hrSeries: _hrSeries7,
+                                weightSeries: _weightSeries7,
+                                tempSeries: _tempSeries7,
+                                spasmSeries: _spasmSeries7,
+                                deltaPain: _deltaPain,
+                                deltaSleep: _deltaSleep,
+                                deltaEnergy: _deltaEnergy,
+                                deltaSteps: _deltaSteps,
+                                deltaHR: _deltaHR,
+                                deltaWeight: _deltaWeight,
+                                deltaTemp: _deltaTemp,
+                                deltaSpasm: _deltaSpasm,
+                                avgSys: _avgSys,
+                                avgDia: _avgDia,
+                                moodTrend: _moodTrend,
+                                onLogToday: () async {
+                                  await context.push('/tracker/add');
+                                  await _loadSnapshot();
+                                },
+                              ),
+                            ),
+                            SizedBox(height: AppSpacing.md),
                           ],
                         ),
                       ),
-                      SizedBox(height: AppSpacing.sm),
-                      // Daily Goals
-                      _AnimatedSection(
-                        delayMs: 75,
-                        child: _GoalsSection(
-                          goals: _goals,
-                          onIncrement: (goalId) async {
-                            await _goalService.incrementProgress(goalId);
-                            await _loadGoals();
-                          },
-                          onAdd: () => _addOrEditGoal(),
-                          onEdit: (g) => _addOrEditGoal(existing: g),
-                          onQuickAdd: ({
-                            required String title,
-                            String? description,
-                            int target = 5,
-                            String period = 'weekly',
-                            String? linked,
-                          }) =>
-                              _quickAddGoal(
-                            title: title,
-                            description: description,
-                            target: target,
-                            period: period,
-                            linked: linked,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: AppSpacing.sm),
-                      // Medication Tracker Section (below Daily Goals, above Health Snapshot)
-                      _AnimatedSection(
-                        delayMs: 100,
-                        child: _MedicationTrackerSection(
-                          medications: user?.medications ?? [],
-                          isExpanded: _medicationTrackerExpanded,
-                          isLoading: _loadingMedications,
-                          onToggleExpand: () => setState(() => _medicationTrackerExpanded = !_medicationTrackerExpanded),
-                          onAddEntry: () async {
-                            await context.push('/tracker/add');
-                            await _loadMedications();
-                          },
-                          onEditMedications: () => context.push('/profile'),
-                          onQuickLogMedication: _quickLogMedication,
-                          onAddMedication: _addMedication,
-                        ),
-                      ),
-                      SizedBox(height: AppSpacing.sm),
-                      // Health Snapshot
-                      _AnimatedSection(
-                        delayMs: 130,
-                        child: _HealthSnapshotSection(
-                          stats7: _stats7,
-                          statsPrev7: _statsPrev7,
-                          bladderStreak: _bladderStreak,
-                          bowelStreak: _bowelStreak,
-                          painSeries: _painSeries7,
-                          sleepSeries: _sleepSeries7,
-                          energySeries: _energySeries7,
-                          stepsSeries: _stepsSeries7,
-                          hrSeries: _hrSeries7,
-                          weightSeries: _weightSeries7,
-                          tempSeries: _tempSeries7,
-                          spasmSeries: _spasmSeries7,
-                          deltaPain: _deltaPain,
-                          deltaSleep: _deltaSleep,
-                          deltaEnergy: _deltaEnergy,
-                          deltaSteps: _deltaSteps,
-                          deltaHR: _deltaHR,
-                          deltaWeight: _deltaWeight,
-                          deltaTemp: _deltaTemp,
-                          deltaSpasm: _deltaSpasm,
-                          avgSys: _avgSys,
-                          avgDia: _avgDia,
-                          moodTrend: _moodTrend,
-                          onLogToday: () async {
-                            await context.push('/tracker/add');
-                            await _loadSnapshot();
-                          },
-                        ),
-                      ),
-                      SizedBox(height: AppSpacing.md),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
+        ],
+      ),
     );
   }
 }
@@ -1731,157 +1768,159 @@ class _HomeHeaderState extends State<_HomeHeader> {
                     left: AppSpacing.lg,
                     right: AppSpacing.lg,
                     top: AppSpacing.md,
-                  bottom: AppSpacing.sm,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Top row: Brand with greeting pill directly to its right
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const BrandLogo(size: 84),
-                        SizedBox(width: AppSpacing.sm),
-                        Expanded(child: _GreetingPill(text: greeting)),
-                      ],
-                    ),
-                    SizedBox(height: AppSpacing.sm),
-                    // Collapse quick actions behind a single toggle
-                    Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    bottom: AppSpacing.sm,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top row: Brand with greeting pill directly to its right
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final maxDateWidth =
-                                  (constraints.maxWidth * 0.44).clamp(120.0, 190.0);
-                              return Row(
-                                children: [
-                                  Expanded(
-                                    child: _QuickActionButton(
-                                      icon: _expanded
-                                          ? Icons.expand_less
-                                          : Icons.expand_more,
-                                      label: _expanded
-                                          ? 'Hide quick actions'
-                                          : 'Quick actions',
-                                      onTap: () =>
-                                          setState(() => _expanded = !_expanded),
-                                      bgColor:
-                                          cs.onPrimary.withValues(alpha: 0.12),
-                                      fgColor: cs.onPrimary,
-                                      borderColor:
-                                          cs.onPrimary.withValues(alpha: 0.20),
+                          const BrandLogo(size: 84),
+                          SizedBox(width: AppSpacing.sm),
+                          Expanded(child: _GreetingPill(text: greeting)),
+                        ],
+                      ),
+                      SizedBox(height: AppSpacing.sm),
+                      // Collapse quick actions behind a single toggle
+                      Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final maxDateWidth =
+                                    (constraints.maxWidth * 0.44)
+                                        .clamp(120.0, 190.0);
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      child: _QuickActionButton(
+                                        icon: _expanded
+                                            ? Icons.expand_less
+                                            : Icons.expand_more,
+                                        label: _expanded
+                                            ? 'Hide quick actions'
+                                            : 'Quick actions',
+                                        onTap: () => setState(
+                                            () => _expanded = !_expanded),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(width: AppSpacing.sm),
-                                  ConstrainedBox(
-                                    constraints:
-                                        BoxConstraints(maxWidth: maxDateWidth),
-                                    child: Align(
-                                      alignment: Alignment.centerRight,
-                                      child: _TodayPill(text: today),
+                                    SizedBox(width: AppSpacing.sm),
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: maxDateWidth),
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: _TodayPill(text: today),
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                            child: _expanded
-                                ? Padding(
-                                    padding:
-                                        EdgeInsets.only(top: AppSpacing.sm),
-                                    child: Wrap(
-                                      spacing: AppSpacing.md,
-                                      runSpacing: AppSpacing.sm,
-                                      children: [
-                                        Showcase(
-                                          key: TutorialKeys.homeAddEntry,
-                                          title: 'Log today',
-                                          description:
-                                              'Tap here anytime to add a new health entry.',
-                                          child: _QuickActionButton(
-                                            icon: Icons.add_circle_outline,
-                                            label: 'Add Entry',
-                                            onTap: widget.onAddEntry,
+                                  ],
+                                );
+                              },
+                            ),
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              child: _expanded
+                                  ? Padding(
+                                      padding:
+                                          EdgeInsets.only(top: AppSpacing.sm),
+                                      child: Wrap(
+                                        spacing: AppSpacing.md,
+                                        runSpacing: AppSpacing.sm,
+                                        children: [
+                                          Showcase(
+                                            key: TutorialKeys.homeAddEntry,
+                                            title: 'Log today',
+                                            description:
+                                                'Tap here anytime to add a new health entry.',
+                                            child: _QuickActionButton(
+                                              icon: Icons.add_circle_outline,
+                                              label: 'Add Entry',
+                                              onTap: widget.onAddEntry,
+                                              bgColor: cs.onPrimary
+                                                  .withValues(alpha: 0.12),
+                                              fgColor: cs.onPrimary,
+                                              borderColor: cs.onPrimary
+                                                  .withValues(alpha: 0.20),
+                                            ),
+                                          ),
+                                          _QuickActionButton(
+                                            icon: Icons.groups_2_outlined,
+                                            label: 'Communities',
+                                            onTap: widget.onOpenCommunities,
                                             bgColor: cs.onPrimary
                                                 .withValues(alpha: 0.12),
                                             fgColor: cs.onPrimary,
                                             borderColor: cs.onPrimary
                                                 .withValues(alpha: 0.20),
                                           ),
-                                        ),
-                                        _QuickActionButton(
-                                          icon: Icons.groups_2_outlined,
-                                          label: 'Communities',
-                                          onTap: widget.onOpenCommunities,
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _QuickActionButton(
-                                          icon: Icons.library_books_outlined,
-                                          label: 'Resources',
-                                          onTap: widget.onOpenResources,
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _QuickActionButton(
-                                          icon: Icons.medical_services_outlined,
-                                          label: 'My Therapist',
-                                          onTap: widget.onOpenTherapist,
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _QuickActionButton(
-                                          icon: Icons.menu_book_outlined,
-                                          label: 'Education',
-                                          onTap: widget.onOpenEducation,
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _QuickActionButton(
-                                          icon: Icons.calendar_today_outlined,
-                                          label: 'Current Plan',
-                                          onTap: widget.onOpenPlan,
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _QuickActionButton(
-                                          icon: Icons.headset_mic_outlined,
-                                          label: 'Contact Support',
-                                          onTap: widget.onContactSupport,
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                        ]),
-                  ],
+                                          _QuickActionButton(
+                                            icon: Icons.library_books_outlined,
+                                            label: 'Resources',
+                                            onTap: widget.onOpenResources,
+                                            bgColor: cs.onPrimary
+                                                .withValues(alpha: 0.12),
+                                            fgColor: cs.onPrimary,
+                                            borderColor: cs.onPrimary
+                                                .withValues(alpha: 0.20),
+                                          ),
+                                          _QuickActionButton(
+                                            icon:
+                                                Icons.medical_services_outlined,
+                                            label: 'My Therapist',
+                                            onTap: widget.onOpenTherapist,
+                                            bgColor: cs.onPrimary
+                                                .withValues(alpha: 0.12),
+                                            fgColor: cs.onPrimary,
+                                            borderColor: cs.onPrimary
+                                                .withValues(alpha: 0.20),
+                                          ),
+                                          _QuickActionButton(
+                                            icon: Icons.menu_book_outlined,
+                                            label: 'Education',
+                                            onTap: widget.onOpenEducation,
+                                            bgColor: cs.onPrimary
+                                                .withValues(alpha: 0.12),
+                                            fgColor: cs.onPrimary,
+                                            borderColor: cs.onPrimary
+                                                .withValues(alpha: 0.20),
+                                          ),
+                                          _QuickActionButton(
+                                            icon: Icons.calendar_today_outlined,
+                                            label: 'Current Plan',
+                                            onTap: widget.onOpenPlan,
+                                            bgColor: cs.onPrimary
+                                                .withValues(alpha: 0.12),
+                                            fgColor: cs.onPrimary,
+                                            borderColor: cs.onPrimary
+                                                .withValues(alpha: 0.20),
+                                          ),
+                                          _QuickActionButton(
+                                            icon: Icons.headset_mic_outlined,
+                                            label: 'Contact Support',
+                                            onTap: widget.onContactSupport,
+                                            bgColor: cs.onPrimary
+                                                .withValues(alpha: 0.12),
+                                            fgColor: cs.onPrimary,
+                                            borderColor: cs.onPrimary
+                                                .withValues(alpha: 0.20),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          ]),
+                    ],
+                  ),
                 ),
-              ),
                 // Removed bottom fade for a crisp edge
               ],
             ),
@@ -2094,7 +2133,8 @@ class _HealthSnapshotSection extends StatefulWidget {
 class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
   final bool _showAll = false;
 
-  Widget _buildAllMetricsSheet(BuildContext context, ScrollController controller) {
+  Widget _buildAllMetricsSheet(
+      BuildContext context, ScrollController controller) {
     final cs = Theme.of(context).colorScheme;
     final avgPain = (widget.stats7['avgPain'] ?? 0).toStringAsFixed(1);
     final avgSleep = (widget.stats7['avgSleep'] ?? 0).toStringAsFixed(1);
@@ -2127,7 +2167,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
           ),
           // Header
           Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.sm),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.sm),
             child: Row(
               children: [
                 Expanded(
@@ -2160,7 +2201,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                   SizedBox(height: AppSpacing.sm),
                   Text(
                     'Track your progress over the past week',
-                    style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
+                    style: context.textStyles.bodyMedium
+                        ?.withColor(cs.onSurfaceVariant),
                   ),
                   SizedBox(height: AppSpacing.lg),
                   // Pain Chart
@@ -2219,7 +2261,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                       minY: 0,
                       maxY: _stepsMaxY(widget.stepsSeries),
                     ),
-                  if (widget.stepsSeries.isNotEmpty) SizedBox(height: AppSpacing.md),
+                  if (widget.stepsSeries.isNotEmpty)
+                    SizedBox(height: AppSpacing.md),
                   // Heart Rate Chart
                   if (widget.hrSeries.isNotEmpty)
                     _DetailedMetricCard(
@@ -2234,7 +2277,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                       minY: _hrMinY(widget.hrSeries),
                       maxY: _hrMaxY(widget.hrSeries),
                     ),
-                  if (widget.hrSeries.isNotEmpty) SizedBox(height: AppSpacing.md),
+                  if (widget.hrSeries.isNotEmpty)
+                    SizedBox(height: AppSpacing.md),
                   // Weight Chart
                   if (widget.weightSeries.isNotEmpty)
                     _DetailedMetricCard(
@@ -2249,7 +2293,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                       minY: _weightMinY(widget.weightSeries),
                       maxY: _weightMaxY(widget.weightSeries),
                     ),
-                  if (widget.weightSeries.isNotEmpty) SizedBox(height: AppSpacing.md),
+                  if (widget.weightSeries.isNotEmpty)
+                    SizedBox(height: AppSpacing.md),
                   // Temperature Chart
                   if (widget.tempSeries.isNotEmpty)
                     _DetailedMetricCard(
@@ -2264,7 +2309,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                       minY: _tempMinY(widget.tempSeries),
                       maxY: _tempMaxY(widget.tempSeries),
                     ),
-                  if (widget.tempSeries.isNotEmpty) SizedBox(height: AppSpacing.md),
+                  if (widget.tempSeries.isNotEmpty)
+                    SizedBox(height: AppSpacing.md),
                   // Spasm Chart
                   if (widget.spasmSeries.isNotEmpty)
                     _DetailedMetricCard(
@@ -2279,7 +2325,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                       minY: 0,
                       maxY: 10,
                     ),
-                  if (widget.spasmSeries.isNotEmpty) SizedBox(height: AppSpacing.md),
+                  if (widget.spasmSeries.isNotEmpty)
+                    SizedBox(height: AppSpacing.md),
                   // Blood Pressure (if available)
                   if (avgBpStr != 'No data')
                     Container(
@@ -2287,7 +2334,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                       decoration: BoxDecoration(
                         color: cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
+                        border: Border.all(
+                            color: cs.outline.withValues(alpha: 0.2)),
                       ),
                       child: Row(
                         children: [
@@ -2297,7 +2345,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                               color: Colors.pink.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Icon(Icons.monitor_heart_outlined, color: Colors.pink, size: 24),
+                            child: Icon(Icons.monitor_heart_outlined,
+                                color: Colors.pink, size: 24),
                           ),
                           SizedBox(width: AppSpacing.md),
                           Expanded(
@@ -2306,12 +2355,14 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                               children: [
                                 Text(
                                   'Blood Pressure',
-                                  style: context.textStyles.labelLarge?.withColor(cs.onSurfaceVariant),
+                                  style: context.textStyles.labelLarge
+                                      ?.withColor(cs.onSurfaceVariant),
                                 ),
                                 SizedBox(height: 2),
                                 Text(
                                   avgBpStr,
-                                  style: context.textStyles.titleLarge?.semiBold,
+                                  style:
+                                      context.textStyles.titleLarge?.semiBold,
                                 ),
                               ],
                             ),
@@ -2327,7 +2378,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                       decoration: BoxDecoration(
                         color: cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
+                        border: Border.all(
+                            color: cs.outline.withValues(alpha: 0.2)),
                       ),
                       child: Row(
                         children: [
@@ -2337,7 +2389,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                               color: cs.primaryContainer,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Text(_moodEmoji(widget.moodTrend), style: const TextStyle(fontSize: 24)),
+                            child: Text(_moodEmoji(widget.moodTrend),
+                                style: const TextStyle(fontSize: 24)),
                           ),
                           SizedBox(width: AppSpacing.md),
                           Expanded(
@@ -2346,12 +2399,14 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                               children: [
                                 Text(
                                   'Overall Mood',
-                                  style: context.textStyles.labelLarge?.withColor(cs.onSurfaceVariant),
+                                  style: context.textStyles.labelLarge
+                                      ?.withColor(cs.onSurfaceVariant),
                                 ),
                                 SizedBox(height: 2),
                                 Text(
                                   widget.moodTrend,
-                                  style: context.textStyles.titleLarge?.semiBold,
+                                  style:
+                                      context.textStyles.titleLarge?.semiBold,
                                 ),
                               ],
                             ),
@@ -2374,7 +2429,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                         Expanded(
                           child: Text(
                             'Track your daily health metrics in the Tracker tab for more detailed insights.',
-                            style: context.textStyles.bodySmall?.withColor(cs.onSurface),
+                            style: context.textStyles.bodySmall
+                                ?.withColor(cs.onSurface),
                           ),
                         ),
                       ],
@@ -2659,9 +2715,8 @@ class _HealthSnapshotSectionState extends State<_HealthSnapshotSection> {
                 ],
               ),
             ),
-            crossFadeState: _showAll
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
+            crossFadeState:
+                _showAll ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 220),
           ),
         ],
@@ -2822,7 +2877,9 @@ class _GoalTipsSheetState extends State<_GoalTipsSheet> {
       ];
 
       final res = <String, dynamic>{
-        'oneLiner': title.isNotEmpty ? 'Small steps toward "$title" add up.' : 'Small steps add up.',
+        'oneLiner': title.isNotEmpty
+            ? 'Small steps toward "$title" add up.'
+            : 'Small steps add up.',
         'tips': tips,
         'exampleLogs': <String>[
           'Did the tiny version today (5 min).',
@@ -3015,7 +3072,8 @@ class _AIInsightsSheetState extends State<_AIInsightsSheet> {
         'summary':
             'Compared to your previous week, pain is $painTrend, sleep is $sleepTrend, and energy is $energyTrend.',
         'highlights': <String>[
-          if (sleepTrend == 'up') 'Nice work — average sleep improved week over week.',
+          if (sleepTrend == 'up')
+            'Nice work — average sleep improved week over week.',
           if (energyTrend == 'up') 'Energy trended up compared to last week.',
         ],
         'risks': <String>[
@@ -3986,7 +4044,8 @@ class _GoalsSection extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(Icons.flag_outlined,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant, size: 20),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        size: 20),
                     SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Column(
@@ -4237,7 +4296,9 @@ class _NextStepCardState extends State<_NextStepCard> {
             preferences: user.preferences,
             conditionId: cond.id,
           );
-          if (detail != null && detail.hasDetails && conditionName?.trim().isNotEmpty == true) {
+          if (detail != null &&
+              detail.hasDetails &&
+              conditionName?.trim().isNotEmpty == true) {
             conditionDetailsSummary = detail.toAiSummary(conditionName!);
           }
         }
@@ -4494,6 +4555,10 @@ class _NextStepCardState extends State<_NextStepCard> {
                     ],
                   ),
                   SizedBox(height: AppSpacing.sm),
+                  if ((milestone.helpType ?? '').isNotEmpty) ...[
+                    HelpTypeChip(helpType: milestone.helpType!),
+                    SizedBox(height: 6),
+                  ],
                   Text(
                     milestone.title,
                     style: context.textStyles.titleMedium?.semiBold,
@@ -4534,6 +4599,13 @@ class _NextStepCardState extends State<_NextStepCard> {
                         spacing: AppSpacing.sm,
                         runSpacing: AppSpacing.sm,
                         children: [
+                          if ((milestone.helpType ?? '').isNotEmpty)
+                            HelpTypeActionButton(
+                              helpType: milestone.helpType,
+                              milestoneTitle: milestone.title,
+                              milestoneDescription: milestone.description,
+                              onLearn: _openLearnMore,
+                            ),
                           TextButton.icon(
                             onPressed: _openLearnMore,
                             icon: const Icon(Icons.school),
@@ -4720,7 +4792,6 @@ class _NoNextStepCard extends StatelessWidget {
   }
 }
 
-
 class _MedicationTrackerSection extends StatelessWidget {
   final List<Medication> medications;
   final bool isExpanded;
@@ -4747,12 +4818,12 @@ class _MedicationTrackerSection extends StatelessWidget {
     if (parts.length != 2) return time;
     final hour = int.tryParse(parts[0]) ?? 0;
     final minute = int.tryParse(parts[1]) ?? 0;
-    
+
     // Check for preset times
     if (hour == 8 && minute == 0) return 'Morning';
     if (hour == 12 && minute == 0) return 'Noon';
     if (hour == 20 && minute == 0) return 'Night';
-    
+
     final period = hour >= 12 ? 'PM' : 'AM';
     final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
     return '$displayHour:${minute.toString().padLeft(2, '0')} $period';
@@ -4762,7 +4833,7 @@ class _MedicationTrackerSection extends StatelessWidget {
     final parts = time.split(':');
     if (parts.length != 2) return Icons.schedule;
     final hour = int.tryParse(parts[0]) ?? 0;
-    
+
     if (hour >= 5 && hour < 12) return Icons.wb_sunny_outlined;
     if (hour >= 12 && hour < 17) return Icons.light_mode_outlined;
     return Icons.nightlight_outlined;
@@ -4843,7 +4914,8 @@ class _MedicationTrackerSection extends StatelessWidget {
                           SizedBox(height: 4),
                           Text(
                             'Add your medications to track them here.',
-                            style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
+                            style: context.textStyles.bodyMedium
+                                ?.withColor(cs.onSurfaceVariant),
                           ),
                         ],
                       ),
@@ -4885,7 +4957,8 @@ class _MedicationTrackerSection extends StatelessWidget {
                                   color: cs.primaryContainer,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: Icon(Icons.medication, color: cs.primary, size: 20),
+                                child: Icon(Icons.medication,
+                                    color: cs.primary, size: 20),
                               ),
                               SizedBox(width: AppSpacing.sm),
                               Expanded(
@@ -4894,12 +4967,16 @@ class _MedicationTrackerSection extends StatelessWidget {
                                   children: [
                                     Text(
                                       '${medications.length} medication${medications.length == 1 ? '' : 's'}',
-                                      style: context.textStyles.titleSmall?.semiBold,
+                                      style: context
+                                          .textStyles.titleSmall?.semiBold,
                                     ),
                                     if (!isExpanded)
                                       Text(
-                                        medications.map((m) => m.name).join(', '),
-                                        style: context.textStyles.labelMedium?.withColor(cs.onSurfaceVariant),
+                                        medications
+                                            .map((m) => m.name)
+                                            .join(', '),
+                                        style: context.textStyles.labelMedium
+                                            ?.withColor(cs.onSurfaceVariant),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -4909,7 +4986,8 @@ class _MedicationTrackerSection extends StatelessWidget {
                               AnimatedRotation(
                                 turns: isExpanded ? 0.5 : 0,
                                 duration: const Duration(milliseconds: 200),
-                                child: Icon(Icons.keyboard_arrow_down, color: cs.onSurfaceVariant),
+                                child: Icon(Icons.keyboard_arrow_down,
+                                    color: cs.onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -4921,11 +4999,11 @@ class _MedicationTrackerSection extends StatelessWidget {
                           children: [
                             const Divider(height: 1),
                             ...medications.map((med) => _MedicationTile(
-                              medication: med,
-                              getTimeLabel: _getTimeOfDayLabel,
-                              getTimeIcon: _getTimeIcon,
-                              onTap: () => onQuickLogMedication(med),
-                            )),
+                                  medication: med,
+                                  getTimeLabel: _getTimeOfDayLabel,
+                                  getTimeIcon: _getTimeIcon,
+                                  onTap: () => onQuickLogMedication(med),
+                                )),
                           ],
                         ),
                         crossFadeState: isExpanded
@@ -4985,7 +5063,8 @@ class _MedicationTileState extends State<_MedicationTile> {
       onTap: _handleTap,
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+        padding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -4999,7 +5078,8 @@ class _MedicationTileState extends State<_MedicationTile> {
               ),
               child: _isLogging
                   ? Icon(Icons.check, color: cs.onPrimary, size: 18)
-                  : Icon(Icons.medication_liquid, color: cs.secondary, size: 18),
+                  : Icon(Icons.medication_liquid,
+                      color: cs.secondary, size: 18),
             ),
             SizedBox(width: AppSpacing.sm),
             Expanded(
@@ -5015,30 +5095,36 @@ class _MedicationTileState extends State<_MedicationTile> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: cs.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
+                          border: Border.all(
+                              color: cs.primary.withValues(alpha: 0.2)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.add_circle_outline, size: 14, color: cs.primary),
+                            Icon(Icons.add_circle_outline,
+                                size: 14, color: cs.primary),
                             SizedBox(width: 4),
                             Text(
                               'Log',
-                              style: context.textStyles.labelSmall?.withColor(cs.primary),
+                              style: context.textStyles.labelSmall
+                                  ?.withColor(cs.primary),
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  if (widget.medication.dosage != null && widget.medication.dosage!.isNotEmpty)
+                  if (widget.medication.dosage != null &&
+                      widget.medication.dosage!.isNotEmpty)
                     Text(
                       widget.medication.dosage!,
-                      style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
+                      style: context.textStyles.bodySmall
+                          ?.withColor(cs.onSurfaceVariant),
                     ),
                   if (widget.medication.times.isNotEmpty) ...[
                     SizedBox(height: 6),
@@ -5049,7 +5135,8 @@ class _MedicationTileState extends State<_MedicationTile> {
                         final label = widget.getTimeLabel(time);
                         final icon = widget.getTimeIcon(time);
                         return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: cs.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(999),
@@ -5061,7 +5148,8 @@ class _MedicationTileState extends State<_MedicationTile> {
                               SizedBox(width: 4),
                               Text(
                                 label,
-                                style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant),
+                                style: context.textStyles.labelSmall
+                                    ?.withColor(cs.onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -5100,15 +5188,20 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
   static const _noonTime = TimeOfDay(hour: 12, minute: 0);
   static const _nightTime = TimeOfDay(hour: 20, minute: 0);
 
-  bool get _hasMorning => _selectedTimes.any((t) => t.hour == _morningTime.hour && t.minute == _morningTime.minute);
-  bool get _hasNoon => _selectedTimes.any((t) => t.hour == _noonTime.hour && t.minute == _noonTime.minute);
-  bool get _hasNight => _selectedTimes.any((t) => t.hour == _nightTime.hour && t.minute == _nightTime.minute);
+  bool get _hasMorning => _selectedTimes.any(
+      (t) => t.hour == _morningTime.hour && t.minute == _morningTime.minute);
+  bool get _hasNoon => _selectedTimes
+      .any((t) => t.hour == _noonTime.hour && t.minute == _noonTime.minute);
+  bool get _hasNight => _selectedTimes
+      .any((t) => t.hour == _nightTime.hour && t.minute == _nightTime.minute);
 
   void _togglePresetTime(TimeOfDay time) {
     setState(() {
-      final exists = _selectedTimes.any((t) => t.hour == time.hour && t.minute == time.minute);
+      final exists = _selectedTimes
+          .any((t) => t.hour == time.hour && t.minute == time.minute);
       if (exists) {
-        _selectedTimes.removeWhere((t) => t.hour == time.hour && t.minute == time.minute);
+        _selectedTimes
+            .removeWhere((t) => t.hour == time.hour && t.minute == time.minute);
       } else {
         _selectedTimes.add(time);
       }
@@ -5127,7 +5220,9 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
       context: context,
       initialTime: TimeOfDay.now(),
     );
-    if (time != null && !_selectedTimes.any((t) => t.hour == time.hour && t.minute == time.minute)) {
+    if (time != null &&
+        !_selectedTimes
+            .any((t) => t.hour == time.hour && t.minute == time.minute)) {
       setState(() => _selectedTimes.add(time));
     }
   }
@@ -5148,14 +5243,17 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
     setState(() => _isSaving = true);
 
     final times = _selectedTimes
-        .map((t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}')
+        .map((t) =>
+            '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}')
         .toList()
       ..sort();
 
     final medication = Medication(
       id: const Uuid().v4(),
       name: name,
-      dosage: _dosageController.text.trim().isEmpty ? null : _dosageController.text.trim(),
+      dosage: _dosageController.text.trim().isEmpty
+          ? null
+          : _dosageController.text.trim(),
       times: times,
     );
 
@@ -5189,7 +5287,7 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     return AlertDialog(
       title: Row(
         children: [
@@ -5214,8 +5312,10 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
               controller: _nameController,
               decoration: InputDecoration(
                 hintText: 'Medication name',
-                prefixIcon: Icon(Icons.medication_outlined, color: cs.onSurfaceVariant),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+                prefixIcon:
+                    Icon(Icons.medication_outlined, color: cs.onSurfaceVariant),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md)),
               ),
               textCapitalization: TextCapitalization.words,
             ),
@@ -5224,8 +5324,10 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
               controller: _dosageController,
               decoration: InputDecoration(
                 hintText: 'Dosage (optional, e.g., 50mg)',
-                prefixIcon: Icon(Icons.science_outlined, color: cs.onSurfaceVariant),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+                prefixIcon:
+                    Icon(Icons.science_outlined, color: cs.onSurfaceVariant),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md)),
               ),
             ),
             SizedBox(height: AppSpacing.lg),
@@ -5265,7 +5367,9 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
             // Custom times
             Row(
               children: [
-                Text('Custom times:', style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant)),
+                Text('Custom times:',
+                    style: context.textStyles.bodySmall
+                        ?.withColor(cs.onSurfaceVariant)),
                 SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Wrap(
@@ -5274,9 +5378,12 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
                     children: [
                       ..._selectedTimes
                           .where((t) =>
-                              !(t.hour == _morningTime.hour && t.minute == _morningTime.minute) &&
-                              !(t.hour == _noonTime.hour && t.minute == _noonTime.minute) &&
-                              !(t.hour == _nightTime.hour && t.minute == _nightTime.minute))
+                              !(t.hour == _morningTime.hour &&
+                                  t.minute == _morningTime.minute) &&
+                              !(t.hour == _noonTime.hour &&
+                                  t.minute == _noonTime.minute) &&
+                              !(t.hour == _nightTime.hour &&
+                                  t.minute == _nightTime.minute))
                           .map((time) => Chip(
                                 label: Text(_formatTime(time)),
                                 labelStyle: context.textStyles.labelMedium,
@@ -5309,7 +5416,8 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
               ? SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: cs.onPrimary),
                 )
               : const Text('Save'),
         ),
@@ -5336,12 +5444,13 @@ class _TimePresetChipSimple extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md, vertical: AppSpacing.sm),
         decoration: BoxDecoration(
           color: isSelected ? cs.primaryContainer : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -5371,7 +5480,8 @@ class _TimePresetChipSimple extends StatelessWidget {
                 ),
                 Text(
                   subtitle,
-                  style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant),
+                  style: context.textStyles.labelSmall
+                      ?.withColor(cs.onSurfaceVariant),
                 ),
               ],
             ),
@@ -5458,7 +5568,8 @@ class _DetailedMetricCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: context.textStyles.labelLarge?.withColor(cs.onSurfaceVariant),
+                      style: context.textStyles.labelLarge
+                          ?.withColor(cs.onSurfaceVariant),
                     ),
                     SizedBox(height: 2),
                     Row(
@@ -5470,7 +5581,8 @@ class _DetailedMetricCard extends StatelessWidget {
                         SizedBox(width: 4),
                         Text(
                           unit,
-                          style: context.textStyles.bodyLarge?.withColor(cs.onSurfaceVariant),
+                          style: context.textStyles.bodyLarge
+                              ?.withColor(cs.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -5478,7 +5590,8 @@ class _DetailedMetricCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: deltaColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
@@ -5491,7 +5604,8 @@ class _DetailedMetricCard extends StatelessWidget {
                       SizedBox(width: 4),
                       Text(
                         delta.abs().toStringAsFixed(1),
-                        style: context.textStyles.labelMedium?.semiBold.withColor(deltaColor),
+                        style: context.textStyles.labelMedium?.semiBold
+                            .withColor(deltaColor),
                       ),
                     ],
                   ],
@@ -5511,7 +5625,8 @@ class _DetailedMetricCard extends StatelessWidget {
                     child: Center(
                       child: Text(
                         'No data available',
-                        style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
+                        style: context.textStyles.bodyMedium
+                            ?.withColor(cs.onSurfaceVariant),
                       ),
                     ),
                   )
@@ -5541,7 +5656,8 @@ class _DetailedMetricCard extends StatelessWidget {
                                 padding: const EdgeInsets.only(right: 8),
                                 child: Text(
                                   value.toStringAsFixed(0),
-                                  style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant),
+                                  style: context.textStyles.labelSmall
+                                      ?.withColor(cs.onSurfaceVariant),
                                   textAlign: TextAlign.right,
                                 ),
                               ),
@@ -5553,24 +5669,29 @@ class _DetailedMetricCard extends StatelessWidget {
                               reservedSize: 24,
                               interval: 1,
                               getTitlesWidget: (value, meta) {
-                                if (value.toInt() >= series.length) return const SizedBox.shrink();
+                                if (value.toInt() >= series.length)
+                                  return const SizedBox.shrink();
                                 // Show day labels (e.g., Day 1, 2, 3...)
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
                                     '${value.toInt() + 1}',
-                                    style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant),
+                                    style: context.textStyles.labelSmall
+                                        ?.withColor(cs.onSurfaceVariant),
                                   ),
                                 );
                               },
                             ),
                           ),
-                          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          rightTitles: AxisTitles(
+                              sideTitles: SideTitles(showTitles: false)),
+                          topTitles: AxisTitles(
+                              sideTitles: SideTitles(showTitles: false)),
                         ),
                         borderData: FlBorderData(
                           show: true,
-                          border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
+                          border: Border.all(
+                              color: cs.outline.withValues(alpha: 0.2)),
                         ),
                         lineBarsData: [
                           LineChartBarData(
@@ -5590,7 +5711,8 @@ class _DetailedMetricCard extends StatelessWidget {
                             ),
                             dotData: FlDotData(
                               show: true,
-                              getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                              getDotPainter: (spot, percent, barData, index) =>
+                                  FlDotCirclePainter(
                                 radius: 3,
                                 color: color,
                                 strokeWidth: 2,

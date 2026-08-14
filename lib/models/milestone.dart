@@ -9,6 +9,10 @@ class Milestone {
   final DateTime? dueDate;
   final bool completed;
   final int order; // for manual ordering
+  /// Type of help this step represents. One of:
+  /// expert | product | community | learning | action | tracking | environment
+  /// May be null on older records.
+  final String? helpType;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -21,6 +25,7 @@ class Milestone {
     this.dueDate,
     this.completed = false,
     this.order = 0,
+    this.helpType,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -38,6 +43,7 @@ class Milestone {
                 : DateTime.tryParse(json['dueDate'])),
         completed: json['completed'] ?? false,
         order: json['order'] ?? 0,
+        helpType: (json['helpType'] ?? json['help_type']) as String?,
         createdAt: () {
           final ca = json['createdAt'];
           if (ca is Timestamp) return ca.toDate();
@@ -67,6 +73,7 @@ class Milestone {
         'dueDate': dueDate?.toIso8601String(),
         'completed': completed,
         'order': order,
+        'helpType': helpType,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
@@ -77,6 +84,7 @@ class Milestone {
     DateTime? dueDate,
     bool? completed,
     int? order,
+    String? helpType,
   }) =>
       Milestone(
         id: id,
@@ -87,6 +95,7 @@ class Milestone {
         dueDate: dueDate ?? this.dueDate,
         completed: completed ?? this.completed,
         order: order ?? this.order,
+        helpType: helpType ?? this.helpType,
         createdAt: createdAt,
         updatedAt: DateTime.now(),
       );

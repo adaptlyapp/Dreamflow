@@ -69,6 +69,9 @@ import 'package:wellspring/screens/recovery/recovery_blueprint_wizard.dart';
 import 'package:wellspring/screens/recovery/care_team_schedule_screen.dart';
 import 'package:wellspring/models/recovery_blueprint.dart';
 import 'package:wellspring/screens/journey/journey_screen.dart';
+import 'package:wellspring/screens/journey/journey_builder_screen.dart';
+import 'package:wellspring/screens/journey/milestone_detail_screen.dart';
+import 'package:wellspring/screens/journey/arie_journey_creator_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -621,12 +624,16 @@ final _router = GoRouter(
           currentIndex = 3;
         } else if (state.uri.path == '/profile' || state.uri.path == '/achievements' || state.uri.path.startsWith('/u/')) {
           currentIndex = 4;
+        } else if (state.uri.path.startsWith('/plan/')) {
+          currentIndex = 1;
         }
 
         // Log high-level tab screen views based on location
         final path = state.uri.path;
         if (path == '/') {
           AnalyticsService.instance.logScreenView('Home');
+        } else if (path == '/journey' || path.startsWith('/journey/') || path == '/arie-journey-creator') {
+          AnalyticsService.instance.logScreenView('Journey');
         } else if (path == '/conditions' || path.startsWith('/condition/')) {
           AnalyticsService.instance.logScreenView('Conditions');
         } else if (path == '/communities' || path == '/resources' || path == '/hub') {
@@ -696,10 +703,17 @@ final _router = GoRouter(
           },
         ),
         GoRoute(
-          path: '/compact',
+          path: '/journey',
           pageBuilder: (context, state) {
             AnalyticsService.instance.logScreenView('Journey');
             return SmoothTransitionPage(child: const JourneyScreen());
+          },
+        ),
+        GoRoute(
+          path: '/arie-journey-creator',
+          pageBuilder: (context, state) {
+            AnalyticsService.instance.logScreenView('ArieJourneyCreator');
+            return SmoothTransitionPage(child: const ArieJourneyCreatorScreen());
           },
         ),
         GoRoute(
@@ -746,7 +760,31 @@ final _router = GoRouter(
             return SmoothTransitionPage(child: const ConnectedTherapistScreen());
           },
         ),
+        GoRoute(
+          path: '/plan/:id',
+          pageBuilder: (context, state) {
+            final id = state.pathParameters['id']!;
+            final name = (state.extra as String?) ?? 'Plan';
+            AnalyticsService.instance.logScreenView('PlanEditor');
+            return SmoothTransitionPage(child: PlanEditorScreen(conditionId: id, conditionName: name));
+          },
+        ),
       ],
+    ),
+    GoRoute(
+      path: '/journey/builder',
+      pageBuilder: (context, state) {
+        AnalyticsService.instance.logScreenView('JourneyBuilder');
+        return SmoothTransitionPage(child: const JourneyBuilderScreen());
+      },
+    ),
+    GoRoute(
+      path: '/journey/milestone/:id',
+      pageBuilder: (context, state) {
+        final id = state.pathParameters['id']!;
+        AnalyticsService.instance.logScreenView('MilestoneDetail');
+        return SmoothTransitionPage(child: MilestoneDetailScreen(milestoneId: id));
+      },
     ),
     GoRoute(
       path: '/condition/:id',
@@ -770,15 +808,6 @@ final _router = GoRouter(
         final section = state.uri.queryParameters['section'];
         AnalyticsService.instance.logScreenView('Settings');
         return SmoothTransitionPage(child: AccountSettingsScreen(initialSection: section));
-      },
-    ),
-    GoRoute(
-      path: '/plan/:id',
-      pageBuilder: (context, state) {
-        final id = state.pathParameters['id']!;
-        final name = (state.extra as String?) ?? 'Plan';
-        AnalyticsService.instance.logScreenView('PlanEditor');
-        return SmoothTransitionPage(child: PlanEditorScreen(conditionId: id, conditionName: name));
       },
     ),
     GoRoute(

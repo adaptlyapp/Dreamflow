@@ -112,359 +112,378 @@ class _ProfileScreenState extends State<ProfileScreen>
           // Background image
           Positioned.fill(
             child: Image.asset(
-              'assets/images/b0380405-152d-4717-8856-bf48d924b809.png',
+              'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
               fit: BoxFit.cover,
             ),
           ),
           // Content
           SafeArea(
             child: _loading
-            ? const Center(child: CenteredLoadingSkeleton())
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          left: AppSpacing.lg,
-                          right: AppSpacing.lg,
-                          top: AppSpacing.md,
-                        ),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              onPressed: () => context.pop(),
-                              icon: Icon(Icons.arrow_back, color: cs.onSurface),
+                ? const Center(child: CenteredLoadingSkeleton())
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: CustomScrollView(
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: AppSpacing.lg,
+                              right: AppSpacing.lg,
+                              top: AppSpacing.md,
                             ),
-                            if (isAdmin) ...[
-                              TextButton.icon(
-                                onPressed: () =>
-                                    context.go('/admin/suggestions'),
-                                icon: const Icon(Icons.verified_user),
-                                label: const Text('Approvals'),
-                              ),
-                            ],
-                            TextButton.icon(
-                              onPressed: () =>
-                                  context.push('/settings?section=profile'),
-                              icon: const Icon(Icons.edit_outlined),
-                              label: const Text('Edit'),
-                            ),
-                            IconButton(
-                              tooltip: 'Log out',
-                              onPressed: () async {
-                                try {
-                                  await context.read<UserProvider>().logout();
-                                  if (!mounted) return;
-                                  context.go('/auth');
-                                } catch (e) {
-                                  debugPrint('Profile logout failed: $e');
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(
-                                      context,
-                                    ).showSnackBar(const SnackBar(
-                                        content: Text('Failed to log out')));
-                                  }
-                                }
-                              },
-                              icon: Icon(Icons.logout, color: cs.error),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        child: _HeaderCard(name: name),
-                      ),
-                    ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
-                    // Achievements card
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        child: _AchievementsCard(stats: _achievementStats),
-                      ),
-                    ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
-                    // Condition details card
-                    if (_conditions.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                          child: _ConditionDetailsCard(
-                            conditions: _conditions,
-                            onRefresh: _load,
-                          ),
-                        ),
-                      ),
-                    if (_conditions.isNotEmpty)
-                      SliverToBoxAdapter(
-                          child: SizedBox(height: AppSpacing.lg)),
-                    // Preferred location (reflect saved coords from Resources)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        child: _LocationCard(),
-                      ),
-                    ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
-                    // Pinned profiles section
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text('Pinned profiles',
-                                  style:
-                                      context.textStyles.titleLarge?.semiBold),
-                            ),
-                            TextButton.icon(
-                              onPressed: () async {
-                                await showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  showDragHandle: true,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.vertical(
-                                        top: Radius.circular(AppRadius.lg)),
-                                  ),
-                                  builder: (_) => const PinUserSheet(),
-                                );
-                                if (!mounted) return;
-                                setState(() {});
-                              },
-                              icon: Icon(Icons.add, color: cs.primary),
-                              label: Text('Add',
-                                  style: context.textStyles.labelLarge
-                                      ?.withColor(cs.primary)),
-                            )
-                          ],
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm)),
-                    SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: 96,
-                        child: StreamBuilder<List<Map<String, dynamic>>>(
-                          stream: _userService.watchPinnedUsers(),
-                          builder: (context, snapshot) {
-                            // If Firestore denies the query (e.g., a legacy doc violates rules),
-                            // the stream throws and previously pinned items appear to "disappear".
-                            // Surface a clear message instead of rendering an empty list.
-                            if (snapshot.hasError) {
-                              final err = snapshot.error;
-                              debugPrint(
-                                  'ProfileScreen pinned stream error: $err');
-                              return Padding(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: AppSpacing.lg),
-                                child: Card(
-                                  child: Padding(
-                                    padding: AppSpacing.paddingMd,
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.error_outline,
-                                            color: cs.error),
-                                        SizedBox(width: AppSpacing.md),
-                                        Expanded(
-                                          child: Text(
-                                            'Pinned profiles are unavailable right now. Please check Firestore rules for users/{uid}/pinned_users.',
-                                            style: context.textStyles.bodyMedium
-                                                ?.withColor(
-                                                    cs.onSurfaceVariant),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  onPressed: () => context.pop(),
+                                  icon: Icon(Icons.arrow_back,
+                                      color: cs.onSurface),
                                 ),
-                              );
-                            }
-                            final items = snapshot.data ?? [];
-                            if (items.isEmpty) {
-                              return Padding(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: AppSpacing.lg),
-                                child: Card(
-                                  child: Padding(
-                                    padding: AppSpacing.paddingMd,
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.push_pin_outlined,
-                                            color: cs.onSurfaceVariant),
-                                        SizedBox(width: AppSpacing.md),
-                                        Expanded(
-                                          child: Text(
-                                            'Pin profiles you care about to visit quickly.',
-                                            style: context.textStyles.bodyMedium
-                                                ?.withColor(
-                                                    cs.onSurfaceVariant),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-                            return ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: AppSpacing.lg),
-                              itemBuilder: (context, index) {
-                                final p = items[index];
-                                final name = (p['name'] ?? 'User') as String;
-                                final imageUrl =
-                                    (p['imageUrl'] as String?)?.trim();
-                                final userId = p['id'] as String;
-                                ImageProvider? provider;
-                                if (imageUrl != null && imageUrl.isNotEmpty) {
-                                  if (imageUrl.startsWith('data:image')) {
-                                    try {
-                                      final comma = imageUrl.indexOf(',');
-                                      final b64 = comma != -1
-                                          ? imageUrl.substring(comma + 1)
-                                          : imageUrl;
-                                      provider = MemoryImage(base64Decode(b64));
-                                    } catch (_) {
-                                      provider = null;
-                                    }
-                                  } else {
-                                    provider = NetworkImage(imageUrl);
-                                  }
-                                }
-                                return InkWell(
-                                  borderRadius:
-                                      BorderRadius.circular(AppRadius.md),
-                                  onTap: () => context.push('/u/$userId'),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 56,
-                                        height: 56,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: cs.primaryContainer,
-                                          image: provider != null
-                                              ? DecorationImage(
-                                                  image: provider,
-                                                  fit: BoxFit.cover)
-                                              : null,
-                                        ),
-                                        alignment: Alignment.center,
-                                        child: provider == null
-                                            ? Text(name[0].toUpperCase(),
-                                                style: context
-                                                    .textStyles.titleMedium
-                                                    ?.withColor(
-                                                        cs.onPrimaryContainer))
-                                            : null,
-                                      ),
-                                      SizedBox(height: 8),
-                                      SizedBox(
-                                        width: 72,
-                                        child: Text(
-                                          name,
-                                          style: context.textStyles.labelSmall,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      )
-                                    ],
-                                  ),
-                                );
-                              },
-                              separatorBuilder: (_, __) =>
-                                  SizedBox(width: AppSpacing.md),
-                              itemCount: items.length,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        child: Text('Your posts',
-                            style: context.textStyles.titleLarge?.semiBold),
-                      ),
-                    ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
-                    if (_posts.isEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                          child: Card(
-                            child: Padding(
-                              padding: AppSpacing.paddingMd,
-                              child: Row(
-                                children: [
-                                  Icon(Icons.article_outlined,
-                                      color: cs.onSurfaceVariant),
-                                  SizedBox(width: AppSpacing.md),
-                                  Expanded(
-                                    child: Text(
-                                      'You haven’t posted yet. Share an update from Communities!',
-                                      style: context.textStyles.bodyMedium
-                                          ?.withColor(cs.onSurfaceVariant),
-                                    ),
+                                if (isAdmin) ...[
+                                  TextButton.icon(
+                                    onPressed: () =>
+                                        context.go('/admin/suggestions'),
+                                    icon: const Icon(Icons.verified_user),
+                                    label: const Text('Approvals'),
                                   ),
                                 ],
-                              ),
+                                TextButton.icon(
+                                  onPressed: () =>
+                                      context.push('/settings?section=profile'),
+                                  icon: const Icon(Icons.edit_outlined),
+                                  label: const Text('Edit'),
+                                ),
+                                IconButton(
+                                  tooltip: 'Log out',
+                                  onPressed: () async {
+                                    try {
+                                      await context
+                                          .read<UserProvider>()
+                                          .logout();
+                                      if (!mounted) return;
+                                      context.go('/auth');
+                                    } catch (e) {
+                                      debugPrint('Profile logout failed: $e');
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(const SnackBar(
+                                            content:
+                                                Text('Failed to log out')));
+                                      }
+                                    }
+                                  },
+                                  icon: Icon(Icons.logout, color: cs.error),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      )
-                    else
-                      SliverPadding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        sliver: SliverList.builder(
-                          itemCount: _posts.length,
-                          itemBuilder: (context, index) {
-                            final p = _posts[index];
-                            return PostCard(
-                              post: p,
-                              onLike: () => _handleLike(p.id),
-                              onComment: () {
-                                showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  showDragHandle: true,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.vertical(
-                                        top: Radius.circular(AppRadius.lg)),
-                                  ),
-                                  builder: (_) => CommentsSheet(
-                                      post: p, service: _postService),
-                                ).then((_) => _load());
-                              },
-                              onDeleted: _load,
-                            );
-                          },
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.md)),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                            child: _HeaderCard(name: name),
+                          ),
                         ),
-                      ),
-                    SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
-                  ],
-                ),
-              ),
-            ),
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.lg)),
+                        // Achievements card
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                            child: _AchievementsCard(stats: _achievementStats),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.lg)),
+                        // Condition details card
+                        if (_conditions.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.lg),
+                              child: _ConditionDetailsCard(
+                                conditions: _conditions,
+                                onRefresh: _load,
+                              ),
+                            ),
+                          ),
+                        if (_conditions.isNotEmpty)
+                          SliverToBoxAdapter(
+                              child: SizedBox(height: AppSpacing.lg)),
+                        // Preferred location (reflect saved coords from Resources)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                            child: _LocationCard(),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.lg)),
+                        // Pinned profiles section
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text('Pinned profiles',
+                                      style: context
+                                          .textStyles.titleLarge?.semiBold),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () async {
+                                    await showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      showDragHandle: true,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.vertical(
+                                            top: Radius.circular(AppRadius.lg)),
+                                      ),
+                                      builder: (_) => const PinUserSheet(),
+                                    );
+                                    if (!mounted) return;
+                                    setState(() {});
+                                  },
+                                  icon: Icon(Icons.add, color: cs.primary),
+                                  label: Text('Add',
+                                      style: context.textStyles.labelLarge
+                                          ?.withColor(cs.primary)),
+                                )
+                              ],
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.sm)),
+                        SliverToBoxAdapter(
+                          child: SizedBox(
+                            height: 96,
+                            child: StreamBuilder<List<Map<String, dynamic>>>(
+                              stream: _userService.watchPinnedUsers(),
+                              builder: (context, snapshot) {
+                                // If Firestore denies the query (e.g., a legacy doc violates rules),
+                                // the stream throws and previously pinned items appear to "disappear".
+                                // Surface a clear message instead of rendering an empty list.
+                                if (snapshot.hasError) {
+                                  final err = snapshot.error;
+                                  debugPrint(
+                                      'ProfileScreen pinned stream error: $err');
+                                  return Padding(
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: AppSpacing.lg),
+                                    child: Card(
+                                      child: Padding(
+                                        padding: AppSpacing.paddingMd,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.error_outline,
+                                                color: cs.error),
+                                            SizedBox(width: AppSpacing.md),
+                                            Expanded(
+                                              child: Text(
+                                                'Pinned profiles are unavailable right now. Please check Firestore rules for users/{uid}/pinned_users.',
+                                                style: context
+                                                    .textStyles.bodyMedium
+                                                    ?.withColor(
+                                                        cs.onSurfaceVariant),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                                final items = snapshot.data ?? [];
+                                if (items.isEmpty) {
+                                  return Padding(
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: AppSpacing.lg),
+                                    child: Card(
+                                      child: Padding(
+                                        padding: AppSpacing.paddingMd,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.push_pin_outlined,
+                                                color: cs.onSurfaceVariant),
+                                            SizedBox(width: AppSpacing.md),
+                                            Expanded(
+                                              child: Text(
+                                                'Pin profiles you care about to visit quickly.',
+                                                style: context
+                                                    .textStyles.bodyMedium
+                                                    ?.withColor(
+                                                        cs.onSurfaceVariant),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: AppSpacing.lg),
+                                  itemBuilder: (context, index) {
+                                    final p = items[index];
+                                    final name =
+                                        (p['name'] ?? 'User') as String;
+                                    final imageUrl =
+                                        (p['imageUrl'] as String?)?.trim();
+                                    final userId = p['id'] as String;
+                                    ImageProvider? provider;
+                                    if (imageUrl != null &&
+                                        imageUrl.isNotEmpty) {
+                                      if (imageUrl.startsWith('data:image')) {
+                                        try {
+                                          final comma = imageUrl.indexOf(',');
+                                          final b64 = comma != -1
+                                              ? imageUrl.substring(comma + 1)
+                                              : imageUrl;
+                                          provider =
+                                              MemoryImage(base64Decode(b64));
+                                        } catch (_) {
+                                          provider = null;
+                                        }
+                                      } else {
+                                        provider = NetworkImage(imageUrl);
+                                      }
+                                    }
+                                    return InkWell(
+                                      borderRadius:
+                                          BorderRadius.circular(AppRadius.md),
+                                      onTap: () => context.push('/u/$userId'),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Container(
+                                            width: 56,
+                                            height: 56,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: cs.primaryContainer,
+                                              image: provider != null
+                                                  ? DecorationImage(
+                                                      image: provider,
+                                                      fit: BoxFit.cover)
+                                                  : null,
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: provider == null
+                                                ? Text(name[0].toUpperCase(),
+                                                    style: context
+                                                        .textStyles.titleMedium
+                                                        ?.withColor(cs
+                                                            .onPrimaryContainer))
+                                                : null,
+                                          ),
+                                          SizedBox(height: 8),
+                                          SizedBox(
+                                            width: 72,
+                                            child: Text(
+                                              name,
+                                              style:
+                                                  context.textStyles.labelSmall,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          )
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                  separatorBuilder: (_, __) =>
+                                      SizedBox(width: AppSpacing.md),
+                                  itemCount: items.length,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.lg)),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                            child: Text('Your posts',
+                                style: context.textStyles.titleLarge?.semiBold),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.md)),
+                        if (_posts.isEmpty)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.lg),
+                              child: Card(
+                                child: Padding(
+                                  padding: AppSpacing.paddingMd,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.article_outlined,
+                                          color: cs.onSurfaceVariant),
+                                      SizedBox(width: AppSpacing.md),
+                                      Expanded(
+                                        child: Text(
+                                          'You haven’t posted yet. Share an update from Communities!',
+                                          style: context.textStyles.bodyMedium
+                                              ?.withColor(cs.onSurfaceVariant),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          SliverPadding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                            sliver: SliverList.builder(
+                              itemCount: _posts.length,
+                              itemBuilder: (context, index) {
+                                final p = _posts[index];
+                                return PostCard(
+                                  post: p,
+                                  onLike: () => _handleLike(p.id),
+                                  onComment: () {
+                                    showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      showDragHandle: true,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.vertical(
+                                            top: Radius.circular(AppRadius.lg)),
+                                      ),
+                                      builder: (_) => CommentsSheet(
+                                          post: p, service: _postService),
+                                    ).then((_) => _load());
+                                  },
+                                  onDeleted: _load,
+                                );
+                              },
+                            ),
+                          ),
+                        SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.xl)),
+                      ],
+                    ),
+                  ),
+          ),
         ],
       ),
     );

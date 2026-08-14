@@ -50,6 +50,7 @@ class MilestoneService {
                 'order': item['order'],
                 'dueDate': item['due_date'],
                 'completed': item['completed'],
+                'help_type': item['help_type'],
                 'createdAt': item['created_at'],
                 'updatedAt': item['updated_at'],
               }))
@@ -90,6 +91,7 @@ class MilestoneService {
         'order': data['order'],
         'dueDate': data['due_date'],
         'completed': data['completed'],
+        'help_type': data['help_type'],
         'createdAt': data['created_at'],
         'updatedAt': data['updated_at'],
       });
@@ -110,6 +112,7 @@ class MilestoneService {
         'order': m.order,
         'due_date': m.dueDate?.toIso8601String(),
         'completed': m.completed,
+        'help_type': m.helpType,
         'created_at': m.createdAt.toIso8601String(),
         'updated_at': m.updatedAt.toIso8601String(),
       });
@@ -146,6 +149,9 @@ class MilestoneService {
             break;
           case 'updatedAt':
             updateData['updated_at'] = entry.value;
+            break;
+          case 'helpType':
+            updateData['help_type'] = entry.value;
             break;
           default:
             updateData[entry.key] = entry.value;

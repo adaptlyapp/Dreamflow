@@ -155,12 +155,12 @@ class _TrackerScreenState extends State<TrackerScreen>
       if (has) {
         // Enable background delivery for continuous sync
         await _healthService.enableBackgroundDelivery();
-        
+
         // Perform initial sync
         final data = await _healthService.syncNow();
         if (!mounted) return;
         setState(() => _todaySteps = data['steps'] as int?);
-        
+
         debugPrint('TrackerScreen: Auto-sync enabled for Apple Health');
       } else {
         setState(() {}); // update UI to show connect prompt
@@ -181,14 +181,14 @@ class _TrackerScreenState extends State<TrackerScreen>
       if (ok) {
         // Enable background delivery for continuous updates
         await _healthService.enableBackgroundDelivery();
-        
+
         // Perform initial sync
         final data = await _healthService.syncNow();
         if (!mounted) return;
         setState(() => _todaySteps = data['steps'] as int?);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Apple Health connected - Auto-sync enabled')));
+
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Apple Health connected - Auto-sync enabled')));
         debugPrint('TrackerScreen: Background delivery and auto-sync enabled');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -218,16 +218,16 @@ class _TrackerScreenState extends State<TrackerScreen>
           // Background image
           Positioned.fill(
             child: Image.asset(
-              'assets/images/b0380405-152d-4717-8856-bf48d924b809.png',
+              'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
               fit: BoxFit.cover,
             ),
           ),
           // Content
           SafeArea(
             child: DefaultTabController(
-          length: 2,
-          child: Column(
-            children: [
+              length: 2,
+              child: Column(
+                children: [
                   Padding(
                     padding: EdgeInsets.fromLTRB(
                       AppSpacing.lg,
@@ -243,15 +243,21 @@ class _TrackerScreenState extends State<TrackerScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _tabIndex == 0 ? 'Health Tracker' : 'Nutrition Tracker',
-                                style: context.textStyles.headlineMedium?.semiBold,
+                                _tabIndex == 0
+                                    ? 'Health Tracker'
+                                    : 'Nutrition Tracker',
+                                style:
+                                    context.textStyles.headlineMedium?.semiBold,
                               ),
                               SizedBox(height: AppSpacing.xs),
                               Text(
                                 _tabIndex == 0
-                                    ? (_entries.isEmpty ? 'No entries yet' : 'Your health overview: 30 days')
+                                    ? (_entries.isEmpty
+                                        ? 'No entries yet'
+                                        : 'Your health overview: 30 days')
                                     : 'Meals, hydration, and progress',
-                                style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
+                                style: context.textStyles.bodyMedium
+                                    ?.withColor(cs.onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -267,16 +273,22 @@ class _TrackerScreenState extends State<TrackerScreen>
                                   },
                                   icon: Icon(Icons.add, color: cs.onPrimary),
                                   label: Text('Add Entry',
-                                      style: context.textStyles.labelLarge?.semiBold.withColor(cs.onPrimary)),
+                                      style: context
+                                          .textStyles.labelLarge?.semiBold
+                                          .withColor(cs.onPrimary)),
                                   style: ButtonStyle(
                                     shape: WidgetStatePropertyAll(
-                                      RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12)),
                                     ),
                                     padding: const WidgetStatePropertyAll(
-                                        EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
+                                        EdgeInsets.symmetric(
+                                            horizontal: 14, vertical: 10)),
                                   ),
                                 )
-                              : const SizedBox(key: ValueKey('no_add'), width: 0, height: 0),
+                              : const SizedBox(
+                                  key: ValueKey('no_add'), width: 0, height: 0),
                         ),
                       ],
                     ),
@@ -291,9 +303,11 @@ class _TrackerScreenState extends State<TrackerScreen>
                       labelColor: cs.onSurface,
                       unselectedLabelColor: cs.onSurfaceVariant,
                       indicator: BoxDecoration(
-                        color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
+                        color:
+                            cs.surfaceContainerHighest.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+                        border: Border.all(
+                            color: cs.outlineVariant.withValues(alpha: 0.35)),
                       ),
                       indicatorSize: TabBarIndicatorSize.tab,
                       tabs: const [
@@ -309,7 +323,8 @@ class _TrackerScreenState extends State<TrackerScreen>
                         _isLoading
                             ? const Center(child: CenteredLoadingSkeleton())
                             : SingleChildScrollView(
-                                padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                                padding: EdgeInsets.fromLTRB(
+                                    AppSpacing.lg, 0, AppSpacing.lg, 100),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -318,7 +333,8 @@ class _TrackerScreenState extends State<TrackerScreen>
                                       SizedBox(height: AppSpacing.md),
                                     ],
                                     AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 250),
+                                      duration:
+                                          const Duration(milliseconds: 250),
                                       child: _buildStatsCards(),
                                     ),
                                     SizedBox(height: AppSpacing.lg),
@@ -328,7 +344,8 @@ class _TrackerScreenState extends State<TrackerScreen>
                                       Divider(
                                         height: 1,
                                         thickness: 0.6,
-                                        color: cs.outlineVariant.withValues(alpha: 0.28),
+                                        color: cs.outlineVariant
+                                            .withValues(alpha: 0.28),
                                       ),
                                       SizedBox(height: AppSpacing.lg),
                                       _buildRecentEntries(),
@@ -337,13 +354,22 @@ class _TrackerScreenState extends State<TrackerScreen>
                                         child: Column(
                                           children: [
                                             SizedBox(height: AppSpacing.xxl),
-                                            Icon(Icons.insert_chart_outlined, size: 64, color: cs.onSurfaceVariant),
+                                            Icon(Icons.insert_chart_outlined,
+                                                size: 64,
+                                                color: cs.onSurfaceVariant),
                                             SizedBox(height: AppSpacing.md),
                                             Text('No entries yet',
-                                                style: context.textStyles.titleLarge?.withColor(cs.onSurfaceVariant)),
+                                                style: context
+                                                    .textStyles.titleLarge
+                                                    ?.withColor(
+                                                        cs.onSurfaceVariant)),
                                             SizedBox(height: AppSpacing.sm),
-                                            Text('Start tracking your health metrics',
-                                                style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant)),
+                                            Text(
+                                                'Start tracking your health metrics',
+                                                style: context
+                                                    .textStyles.bodyMedium
+                                                    ?.withColor(
+                                                        cs.onSurfaceVariant)),
                                           ],
                                         ),
                                       ),
@@ -354,9 +380,9 @@ class _TrackerScreenState extends State<TrackerScreen>
                       ],
                     ),
                   ),
-            ],
-          ),
-        ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -827,7 +853,8 @@ class _TrackerScreenState extends State<TrackerScreen>
                             Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: isMedOnly
                                         ? cs.primary.withValues(alpha: 0.15)
@@ -838,14 +865,22 @@ class _TrackerScreenState extends State<TrackerScreen>
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
-                                        isMedOnly ? Icons.medication_outlined : Icons.monitor_heart_outlined,
+                                        isMedOnly
+                                            ? Icons.medication_outlined
+                                            : Icons.monitor_heart_outlined,
                                         size: 14,
-                                        color: isMedOnly ? cs.primary : cs.secondary,
+                                        color: isMedOnly
+                                            ? cs.primary
+                                            : cs.secondary,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        isMedOnly ? 'Medication Log' : 'Tracker Log',
-                                        style: context.textStyles.labelSmall?.semiBold.withColor(
+                                        isMedOnly
+                                            ? 'Medication Log'
+                                            : 'Tracker Log',
+                                        style: context
+                                            .textStyles.labelSmall?.semiBold
+                                            .withColor(
                                           isMedOnly ? cs.primary : cs.secondary,
                                         ),
                                       ),
@@ -861,7 +896,8 @@ class _TrackerScreenState extends State<TrackerScreen>
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       textAlign: TextAlign.right,
-                                      style: context.textStyles.labelMedium?.withColor(cs.onSurfaceVariant),
+                                      style: context.textStyles.labelMedium
+                                          ?.withColor(cs.onSurfaceVariant),
                                     ),
                                   ),
                                 ),
@@ -892,7 +928,8 @@ class _TrackerScreenState extends State<TrackerScreen>
                                       ),
                                     if (entry.energyLevel != null)
                                       _MetricChip(
-                                        label: 'Energy: ${entry.energyLevel}/10',
+                                        label:
+                                            'Energy: ${entry.energyLevel}/10',
                                         icon: Icons.bolt_outlined,
                                         maxWidth: constraints.maxWidth,
                                       ),
@@ -902,9 +939,11 @@ class _TrackerScreenState extends State<TrackerScreen>
                                         icon: Icons.directions_walk,
                                         maxWidth: constraints.maxWidth,
                                       ),
-                                    if (entry.systolicBP != null && entry.diastolicBP != null)
+                                    if (entry.systolicBP != null &&
+                                        entry.diastolicBP != null)
                                       _MetricChip(
-                                        label: 'BP: ${entry.systolicBP}/${entry.diastolicBP}',
+                                        label:
+                                            'BP: ${entry.systolicBP}/${entry.diastolicBP}',
                                         icon: Icons.monitor_heart_outlined,
                                         maxWidth: constraints.maxWidth,
                                       ),
@@ -934,7 +973,7 @@ class _TrackerScreenState extends State<TrackerScreen>
   Widget _buildMedicationContent(TrackerEntry entry) {
     final cs = Theme.of(context).colorScheme;
     final meds = <String>[];
-    
+
     // Collect medication names from both sources
     if (entry.medications != null) {
       meds.addAll(entry.medications!);
@@ -945,15 +984,17 @@ class _TrackerScreenState extends State<TrackerScreen>
         meds.add('${log.name}$dosage');
       }
     }
-    
+
     if (meds.isEmpty) {
       return Text(
         'No medications logged',
         style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
       );
     }
-    
-    final maxChipWidth = MediaQuery.sizeOf(context).width - (AppSpacing.lg * 2) - (AppSpacing.md * 2);
+
+    final maxChipWidth = MediaQuery.sizeOf(context).width -
+        (AppSpacing.lg * 2) -
+        (AppSpacing.md * 2);
     return Wrap(
       spacing: AppSpacing.sm,
       runSpacing: AppSpacing.sm,
@@ -980,7 +1021,8 @@ class _TrackerScreenState extends State<TrackerScreen>
                     med,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: context.textStyles.labelSmall?.withColor(cs.onSurface),
+                    style:
+                        context.textStyles.labelSmall?.withColor(cs.onSurface),
                   ),
                 ),
               ],

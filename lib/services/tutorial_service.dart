@@ -8,6 +8,7 @@ import 'package:wellspring/services/user_service.dart';
 class TutorialKeys {
   // Bottom navigation items
   static final GlobalKey navHome = GlobalKey(debugLabel: 'nav_home');
+  static final GlobalKey navJourney = GlobalKey(debugLabel: 'nav_journey');
   static final GlobalKey navConditions = GlobalKey(debugLabel: 'nav_conditions');
   static final GlobalKey navCommunity = GlobalKey(debugLabel: 'nav_community');
   static final GlobalKey navTracker = GlobalKey(debugLabel: 'nav_tracker');

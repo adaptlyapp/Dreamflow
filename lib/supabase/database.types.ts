@@ -1240,6 +1240,124 @@ export type Database = {
           },
         ]
       }
+      ems_notebooks: {
+        Row: {
+          color: string
+          created_at: string
+          created_by: string
+          icon: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          created_by: string
+          icon?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          created_by?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ems_pages: {
+        Row: {
+          content: string | null
+          created_at: string
+          created_by: string
+          id: string
+          is_private: boolean
+          order_index: number
+          pinned: boolean
+          section_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          is_private?: boolean
+          order_index?: number
+          pinned?: boolean
+          section_id: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_private?: boolean
+          order_index?: number
+          pinned?: boolean
+          section_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ems_pages_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "ems_sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ems_sections: {
+        Row: {
+          color: string
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          notebook_id: string
+          order_index: number
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          notebook_id: string
+          order_index?: number
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          notebook_id?: string
+          order_index?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ems_sections_notebook_id_fkey"
+            columns: ["notebook_id"]
+            isOneToOne: false
+            referencedRelation: "ems_notebooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       facilities: {
         Row: {
           address: string | null
@@ -1867,6 +1985,222 @@ export type Database = {
           },
         ]
       }
+      journey_goals: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          current_value: number | null
+          description: string | null
+          id: string
+          milestone_id: string
+          order: number | null
+          started_at: string | null
+          status: string
+          target_value: number | null
+          title: string
+          unit: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          current_value?: number | null
+          description?: string | null
+          id?: string
+          milestone_id: string
+          order?: number | null
+          started_at?: string | null
+          status?: string
+          target_value?: number | null
+          title: string
+          unit?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          current_value?: number | null
+          description?: string | null
+          id?: string
+          milestone_id?: string
+          order?: number | null
+          started_at?: string | null
+          status?: string
+          target_value?: number | null
+          title?: string
+          unit?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journey_goals_milestone_id_fkey"
+            columns: ["milestone_id"]
+            isOneToOne: false
+            referencedRelation: "journey_milestones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journey_milestones: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          education_content: string | null
+          id: string
+          order: number | null
+          phase_id: string
+          priority: string | null
+          started_at: string | null
+          status: string
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          education_content?: string | null
+          id?: string
+          order?: number | null
+          phase_id: string
+          priority?: string | null
+          started_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          education_content?: string | null
+          id?: string
+          order?: number | null
+          phase_id?: string
+          priority?: string | null
+          started_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journey_milestones_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journey_tasks: {
+        Row: {
+          assigned_to: string | null
+          completed: boolean | null
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          goal_id: string
+          id: string
+          order: number | null
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          completed?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          goal_id: string
+          id?: string
+          order?: number | null
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_to?: string | null
+          completed?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          goal_id?: string
+          id?: string
+          order?: number | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journey_tasks_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "journey_goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journeys: {
+        Row: {
+          completed_at: string | null
+          condition_id: string
+          created_at: string | null
+          description: string | null
+          domain_type: string
+          id: string
+          order: number | null
+          started_at: string | null
+          status: string
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          condition_id: string
+          created_at?: string | null
+          description?: string | null
+          domain_type: string
+          id?: string
+          order?: number | null
+          started_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          condition_id?: string
+          created_at?: string | null
+          description?: string | null
+          domain_type?: string
+          id?: string
+          order?: number | null
+          started_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
@@ -1961,6 +2295,7 @@ export type Database = {
           created_at: string | null
           description: string | null
           due_date: string | null
+          help_type: string | null
           id: string
           order: number | null
           profile_id: string | null
@@ -1974,6 +2309,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           due_date?: string | null
+          help_type?: string | null
           id?: string
           order?: number | null
           profile_id?: string | null
@@ -1987,6 +2323,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           due_date?: string | null
+          help_type?: string | null
           id?: string
           order?: number | null
           profile_id?: string | null
@@ -2489,6 +2826,56 @@ export type Database = {
           },
         ]
       }
+      phases: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          journey_id: string
+          order: number | null
+          started_at: string | null
+          status: string
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          journey_id: string
+          order?: number | null
+          started_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          journey_id?: string
+          order?: number | null
+          started_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phases_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plan_timelines: {
         Row: {
           condition_id: string | null
@@ -2722,6 +3109,39 @@ export type Database = {
           supplies?: Json
           updated_at?: string
           updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      recovery_domains: {
+        Row: {
+          completed_phases: number | null
+          created_at: string | null
+          id: string
+          last_activity_at: string | null
+          total_phases: number | null
+          type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_phases?: number | null
+          created_at?: string | null
+          id?: string
+          last_activity_at?: string | null
+          total_phases?: number | null
+          type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_phases?: number | null
+          created_at?: string | null
+          id?: string
+          last_activity_at?: string | null
+          total_phases?: number | null
+          type?: string
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []

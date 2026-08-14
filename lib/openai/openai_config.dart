@@ -407,6 +407,9 @@ class OpenAIClient {
                         'dueInDays': m['dueInDays'],
                          // Optional: only required when multiple milestones share a day.
                          'dueTime': (m['dueTime'] ?? '').toString(),
+                         // Goal Breakdown Engine: type of help this step represents.
+                         // One of: expert | product | community | learning | action | tracking | environment
+                         'helpType': _normalizeHelpType((m['helpType'] ?? m['help_type'] ?? m['type'] ?? '').toString()),
                       })
                   .toList();
 
@@ -525,15 +528,33 @@ ${hasConditionDetails && conditionAnchors.isNotEmpty ? '- EVERY milestone descri
         : 'Call one of the listed local resources to schedule an evaluation for "$description" by day 7';
 
     return '''
-Create a step-by-step plan as JSON only.
+You are the "Goal Breakdown Engine" for Adaptly. Do NOT just list actions.
+First, silently reason about what kinds of help the user needs to reach the goal, then output the plan as JSON only.
 
-Constraints:
+Reasoning framework (do this internally, do NOT output it):
+1) UNDERSTAND the goal: what is the user actually trying to accomplish, and what does success look like?
+2) IDENTIFY the categories of help needed to achieve it. Use these canonical categories:
+   - "expert"       → a professional, doctor, therapist, coach, specialist, tutor
+   - "product"      → a physical item, tool, device, supply, or piece of equipment
+   - "community"    → peer support, a group, a mentor, or someone who has done this before
+   - "learning"     → knowledge, research, understanding a concept, reading, watching
+   - "action"       → a concrete practice, habit, or repeatable behavior the user does
+   - "tracking"     → measuring / logging progress to know if it's working
+   - "environment"  → adjusting their physical space, schedule, or setup so the goal becomes easier
+3) DECIDE which categories are actually needed for THIS goal (not every goal needs all of them). A good plan usually mixes 3–6 categories.
+4) TRANSLATE each needed category into 1+ concrete milestones. Every milestone is tagged with its helpType.
+
+Output constraints:
 - Total duration: $durationDays days (about $durationWeeks weeks).
-- Number of milestones: $milestones.
-  - Each milestone must include: title (short), description (1-2 sentences), dueInDays (int from plan start).
-  - If multiple milestones have the same dueInDays, include dueTime (string like "09:00" or "2:00 PM") to order them within that day.
-- Align every milestone directly to the user's primary goal below; avoid generic or unrelated steps.
-  - dueInDays must be NON-DECREASING and stay within the total duration ($durationDays days). It is allowed for multiple milestones to share the same dueInDays.
+- Number of milestones: EXACTLY $milestones.
+- Each milestone MUST include:
+    - "title" (short, action-oriented)
+    - "description" (1–2 sentences, concrete, non-clinical)
+    - "dueInDays" (int, from plan start; NON-DECREASING; within $durationDays)
+    - "helpType" (one of: expert | product | community | learning | action | tracking | environment)
+- If multiple milestones share a dueInDays, include "dueTime" (e.g. "09:00" or "2:00 PM").
+- Prefer variety of helpTypes across the plan; do NOT make every step "action".
+- Ordering guidance: usually put "learning" and "expert" earlier, "action"/"tracking" during the plan, and "community"/"environment" wherever they naturally fit.
 - Start very gentle in week 1, then progress gradually.
 - Keep advice non-clinical; do not give medical or diagnostic guidance.
 $ctx
@@ -558,7 +579,7 @@ Use of local help (important):
 IMPORTANT: Return a JSON object with exactly this shape:
 {
   "milestones": [
-    {"title": "", "description": "", "dueInDays": 7, "dueTime": "09:00"},
+    {"title": "", "description": "", "dueInDays": 7, "dueTime": "09:00", "helpType": "learning"},
     ...
   ]
 }
@@ -569,6 +590,27 @@ Primary goal (from user):
 $description
 """
 ''';
+  }
+
+  /// Normalize a free-form help type string to one of the canonical values.
+  /// Canonical values: expert | product | community | learning | action | tracking | environment
+  /// Returns empty string if it can't confidently be mapped.
+  static String _normalizeHelpType(String raw) {
+    final s = raw.trim().toLowerCase();
+    if (s.isEmpty) return '';
+    const canonical = {
+      'expert', 'product', 'community', 'learning', 'action', 'tracking', 'environment',
+    };
+    if (canonical.contains(s)) return s;
+    // Common synonyms
+    if (s.contains('expert') || s.contains('professional') || s.contains('doctor') || s.contains('therapist') || s.contains('clinician') || s.contains('specialist')) return 'expert';
+    if (s.contains('product') || s.contains('tool') || s.contains('equipment') || s.contains('device') || s.contains('gear') || s.contains('supply')) return 'product';
+    if (s.contains('community') || s.contains('support') || s.contains('peer') || s.contains('group') || s.contains('social')) return 'community';
+    if (s.contains('learn') || s.contains('education') || s.contains('research') || s.contains('read') || s.contains('study')) return 'learning';
+    if (s.contains('track') || s.contains('log') || s.contains('measure') || s.contains('monitor') || s.contains('journal')) return 'tracking';
+    if (s.contains('environment') || s.contains('setup') || s.contains('space') || s.contains('home')) return 'environment';
+    if (s.contains('action') || s.contains('practice') || s.contains('habit') || s.contains('routine') || s.contains('do')) return 'action';
+    return '';
   }
 
   List<Map<String, dynamic>> _normalizeSchedule(List<Map<String, dynamic>> input, {required int totalDays}) {
@@ -590,6 +632,7 @@ $description
         'description': (m['description'] ?? '').toString(),
         'dueInDays': day,
         'dueTime': (m['dueTime'] ?? '').toString(),
+        'helpType': (m['helpType'] ?? '').toString(),
       });
     }
 

@@ -12,6 +12,7 @@ import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/openai/openai_config.dart';
 import 'package:wellspring/widgets/skeletons.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:wellspring/widgets/help_type_chip.dart';
 
 /// Family member's own journey page - completely separate from patient journey
 class FamilyMemberJourneyScreen extends StatefulWidget {
@@ -602,6 +603,7 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                                         item['title'] ?? 'Milestone ${i + 1}',
                                     'description': item['description'],
                                     'due_date': item['dueDate'],
+                                    'help_type': (item['helpType'] ?? item['help_type']),
                                     'completed': false,
                                     'created_at':
                                         DateTime.now().toIso8601String(),
@@ -1232,6 +1234,13 @@ class _MilestonesCard extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              if (((m['help_type'] ?? m['helpType']) ?? '').toString().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                HelpTypeChip(
+                                  helpType: ((m['help_type'] ?? m['helpType']) ?? '').toString(),
+                                  compact: true,
+                                ),
+                              ],
                               if (m['description'] != null &&
                                   m['description'].toString().isNotEmpty) ...[
                                 const SizedBox(height: 4),

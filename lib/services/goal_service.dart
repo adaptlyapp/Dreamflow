@@ -9,6 +9,58 @@ class GoalService {
   final SupabaseClient _supabase = SupabaseConfig.client;
   final AchievementService _achievements = AchievementService();
 
+  /// Get all goals for a user (active and inactive)
+  Future<List<Goal>> list({required String userId}) async {
+    try {
+      final data = await _supabase
+          .from('goals')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      return data.map((item) => Goal.fromJson({
+        'id': item['id'],
+        'userId': item['user_id'],
+        'title': item['title'],
+        'description': item['description'],
+        'targetPerPeriod': item['target_per_period'],
+        'progressThisPeriod': item['progress_this_period'],
+        'period': item['period'],
+        'active': item['active'],
+        'linkedTrackerKey': item['linked_tracker_key'],
+        'createdAt': item['created_at'],
+        'updatedAt': item['updated_at'],
+        'lastResetAt': item['last_reset_at'],
+      })).toList();
+    } catch (e) {
+      debugPrint('GoalService.list error: $e');
+      return [];
+    }
+  }
+
+  /// Upsert (create or update) a goal
+  Future<void> upsert(Goal goal) async {
+    try {
+      await _supabase.from('goals').upsert({
+        'id': goal.id,
+        'user_id': goal.userId,
+        'title': goal.title,
+        'description': goal.description,
+        'target_per_period': goal.targetPerPeriod,
+        'progress_this_period': goal.progressThisPeriod,
+        'period': goal.period,
+        'active': goal.active,
+        'linked_tracker_key': goal.linkedTrackerKey,
+        'created_at': goal.createdAt.toIso8601String(),
+        'updated_at': goal.updatedAt.toIso8601String(),
+        'last_reset_at': goal.lastResetAt?.toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('GoalService.upsert error: $e');
+      rethrow;
+    }
+  }
+
   Future<List<Goal>> getActiveGoals(String userId) async {
     try {
       final data = await _supabase
