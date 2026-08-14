@@ -312,7 +312,9 @@ class OpenAIClient {
     List<Map<String, dynamic>>? relatedCommunities, // [{ name, memberCount }]
     List<Map<String, String>>? userSuggestions, // [{ name, note, type }]
   }) async {
+    debugPrint('🎯🎯🎯 [OpenAI] generateMilestones called! description="$description", milestones=$milestones, condition="$conditionName"');
     if (!AiSafetyPolicy.enabled) {
+      debugPrint('❌ [OpenAI] AI safety policy is DISABLED');
       throw Exception('AI suggestions are disabled in Settings');
     }
     if (!AiSafetyPolicy.allowAnotherCallNow()) {
@@ -370,9 +372,12 @@ class OpenAIClient {
     int attempt = 0;
     while (true) {
       try {
+        debugPrint('📡 [OpenAI] Calling Supabase Edge Function (attempt ${attempt + 1}, strict=$strictTried)...');
         final data = await OpenAIClient._invokeOpenAiProxy(_makeBody(strict: strictTried), timeout: const Duration(seconds: 35));
+        debugPrint('📡 [OpenAI] Edge Function returned successfully!');
         AiSafetyPolicy.recordCall();
         final content = data['choices']?[0]?['message']?['content'];
+        debugPrint('📡 [OpenAI] Parsing response content (type: ${content.runtimeType})...');
           // Content can be a String (chat.completions) or a List of parts (Responses API/proxy).
           String? jsonText;
           if (content is String) {
@@ -397,21 +402,30 @@ class OpenAIClient {
             try {
               final parsed = jsonDecode(jsonText);
               final raw = (parsed['milestones'] as List?) ?? const [];
+              debugPrint('🔍🔍🔍 [OpenAI] RAW AI RESPONSE: ${raw.length} milestones received');
               // Sanitize to Map<String, dynamic>
                final list = raw
                   .where((e) => e != null)
                   .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map))
-                  .map((m) => {
-                        'title': (m['title'] ?? '').toString(),
-                        'description': (m['description'] ?? '').toString(),
-                        'dueInDays': m['dueInDays'],
-                         // Optional: only required when multiple milestones share a day.
-                         'dueTime': (m['dueTime'] ?? '').toString(),
-                         // Goal Breakdown Engine: type of help this step represents.
-                         // One of: expert | product | community | learning | action | tracking | environment
-                         'helpType': _normalizeHelpType((m['helpType'] ?? m['help_type'] ?? m['type'] ?? '').toString()),
+                  .map((m) {
+                        final rawHelpType = (m['helpType'] ?? m['help_type'] ?? m['type'] ?? '').toString();
+                        final normalized = _normalizeHelpType(rawHelpType);
+                        debugPrint('🎯 [OpenAI] "${(m['title'] ?? '').toString()}" → RAW: "$rawHelpType" → NORMALIZED: "$normalized"');
+                        final result = {
+                          'title': (m['title'] ?? '').toString(),
+                          'description': (m['description'] ?? '').toString(),
+                          'dueInDays': m['dueInDays'],
+                           // Optional: only required when multiple milestones share a day.
+                           'dueTime': (m['dueTime'] ?? '').toString(),
+                           // Goal Breakdown Engine: type of help this step represents.
+                           // One of: expert | product | community | learning | action | tracking | environment
+                           'helpType': normalized,
+                        };
+                        debugPrint('✅ [OpenAI] Final map has helpType: "${result['helpType']}"');
+                        return result;
                       })
                   .toList();
+              debugPrint('📦 [OpenAI] After mapping, list has ${list.length} items');
 
                // Normalize schedule so it always fits the selected duration and can support
                // multiple milestones per day with suggested times.

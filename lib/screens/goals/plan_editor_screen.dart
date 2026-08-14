@@ -457,6 +457,7 @@ _sessionSavedToCloud = true;
 }
 
 Future<void> _generateWithAI() async {
+debugPrint('🟢🟢🟢 _generateWithAI() called - opening bottom sheet 🟢🟢🟢');
 final descCtrl = TextEditingController();
 int count = 5;
 String durationUnit = 'weeks'; // 'weeks' | 'days'
@@ -572,8 +573,10 @@ FilledButton.icon(
 onPressed: _generating
 ? null
 : () async {
+debugPrint('🔴🔴🔴 GENERATE BUTTON PRESSED! 🔴🔴🔴');
 // Validate that something was entered
 if (descCtrl.text.trim().isEmpty) {
+debugPrint('⚠️ Description is empty - showing validation error');
 ScaffoldMessenger.of(context).showSnackBar(
 const SnackBar(content: Text('Please describe your goal or constraints before generating a plan.')),
 );
@@ -606,6 +609,7 @@ debugPrint('[PlanEditor] Generate plan: condition details parse failed (ignored)
 }
 
 final ai = OpenAIClient();
+debugPrint('🚀🚀🚀 [PlanEditor] ABOUT TO CALL AI! description="$description", count=$count, durationDays=$dDays, conditionName="${widget.conditionName}"');
 plan = await ai.generateMilestones(
 description: description,
 milestones: count,
@@ -613,7 +617,10 @@ durationDays: dDays,
 conditionName: widget.conditionName,
 conditionDetailsSummary: conditionDetailsSummary,
 );
-debugPrint('[PlanEditor] AI plan generated: ${plan.length} items');
+debugPrint('✅✅✅ [PlanEditor] AI plan generated: ${plan.length} items');
+for (final item in plan) {
+debugPrint('   - ${item['title']} (helpType: ${item['helpType']})');
+}
 } catch (e) {
 debugPrint('[PlanEditor] AI generate failed; using offline plan: $e');
 if (mounted) {
@@ -834,7 +841,9 @@ final now = DateTime.now();
 final baseDate = DateTime(now.year, now.month, now.day);
 // Build new milestones list
 final newItems = <Milestone>[];
+debugPrint('📋 [PlanEditor] plan.length BEFORE normalize: ${plan.length}');
 final normalized = _normalizePlanSchedule(plan, durationDays: durationDays);
+debugPrint('📋 [PlanEditor] normalized.length AFTER normalize: ${normalized.length}');
 for (int i = 0; i < normalized.length; i++) {
 final p = normalized[i];
 final dueIn = (p['dueInDays'] is int)
@@ -842,6 +851,11 @@ final dueIn = (p['dueInDays'] is int)
 : (int.tryParse('${p['dueInDays']}') ?? ((i + 1) * 7));
 final dueTime = (p['dueTime'] ?? '').toString().trim();
 final dueDate = _applyDueTime(baseDate.add(Duration(days: dueIn)), dueTime.isEmpty ? null : dueTime);
+final helpTypeValue = (p['helpType'] ?? p['help_type'])?.toString().trim().isEmpty == false
+? (p['helpType'] ?? p['help_type']).toString()
+: null;
+debugPrint('🔶 [PlanEditor] RAW MAP DATA for milestone ${i+1}: $p');
+debugPrint('🔶 [PlanEditor] Creating milestone ${i+1}/${normalized.length}: "${(p['title'] ?? 'Milestone ${i + 1}').toString()}" with helpType: "$helpTypeValue"');
 newItems.add(
 Milestone(
 id: const Uuid().v4(),
@@ -851,14 +865,14 @@ title: (p['title'] ?? 'Milestone ${i + 1}').toString(),
 description: (p['description'] ?? '').toString().isEmpty ? null : (p['description'] ?? '').toString(),
 dueDate: dueDate,
 order: i,
-helpType: (p['helpType'] ?? p['help_type'])?.toString().trim().isEmpty == false
-? (p['helpType'] ?? p['help_type']).toString()
-: null,
+helpType: helpTypeValue,
 createdAt: now,
 updatedAt: now,
 ),
 );
+debugPrint('[PlanEditor] ✓ Milestone ${i+1} added to newItems (total so far: ${newItems.length})');
 }
+debugPrint('🎉 [PlanEditor] Loop complete! Created ${newItems.length} milestones total');
 // Create a new timeline for the generated plan
 try {
 final timelineName = 'Generated Plan ${DateFormat('MMM d, yyyy').format(now)}';
