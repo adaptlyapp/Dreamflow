@@ -211,6 +211,84 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  Future<void> _updateMedication(Medication oldMedication, Medication newMedication) async {
+    final userProvider = context.read<UserProvider>();
+    final user = userProvider.currentUser;
+    if (user == null) {
+      debugPrint('Home._updateMedication: no signed-in user');
+      return;
+    }
+
+    // Replace old medication with new one
+    final updatedMedications = user.medications.map((med) => med.id == oldMedication.id ? newMedication : med).toList();
+    final updatedUser = user.copyWith(medications: updatedMedications);
+
+    await userProvider.updateUser(updatedUser);
+    debugPrint('Home._updateMedication: Updated ${newMedication.name}');
+    
+    // Cancel old notifications and schedule new ones
+    try {
+      await NotificationService.instance.cancelMedication(oldMedication.id);
+      await NotificationService.instance.scheduleMedication(newMedication);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${newMedication.name} updated')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Home._updateMedication: notification error: $e');
+    }
+  }
+
+  Future<void> _deleteMedication(Medication medication) async {
+    final userProvider = context.read<UserProvider>();
+    final user = userProvider.currentUser;
+    if (user == null) {
+      debugPrint('Home._deleteMedication: no signed-in user');
+      return;
+    }
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Medication'),
+        content: Text('Are you sure you want to delete ${medication.name}? All reminders will be cancelled.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Remove from medications list
+    final updatedMedications = user.medications.where((med) => med.id != medication.id).toList();
+    final updatedUser = user.copyWith(medications: updatedMedications);
+
+    await userProvider.updateUser(updatedUser);
+    debugPrint('Home._deleteMedication: Deleted ${medication.name}');
+    
+    // Cancel all notifications for this medication
+    try {
+      await NotificationService.instance.cancelMedication(medication.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${medication.name} deleted')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Home._deleteMedication: notification error: $e');
+    }
+  }
+
   Future<void> _quickLogMedication(Medication medication) async {
     final userId = context.read<UserProvider>().currentUser?.id;
     if (userId == null) {
@@ -1544,6 +1622,8 @@ class _HomeScreenState extends State<HomeScreen>
                                     context.push('/profile'),
                                 onQuickLogMedication: _quickLogMedication,
                                 onAddMedication: _addMedication,
+                                onUpdateMedication: _updateMedication,
+                                onDeleteMedication: _deleteMedication,
                               ),
                             ),
                             SizedBox(height: AppSpacing.sm),
@@ -4825,6 +4905,8 @@ class _MedicationTrackerSection extends StatelessWidget {
   final VoidCallback onEditMedications;
   final Future<void> Function(Medication medication) onQuickLogMedication;
   final Future<void> Function(Medication medication) onAddMedication;
+  final Future<void> Function(Medication oldMed, Medication newMed) onUpdateMedication;
+  final Future<void> Function(Medication medication) onDeleteMedication;
 
   const _MedicationTrackerSection({
     required this.medications,
@@ -4835,6 +4917,8 @@ class _MedicationTrackerSection extends StatelessWidget {
     required this.onEditMedications,
     required this.onQuickLogMedication,
     required this.onAddMedication,
+    required this.onUpdateMedication,
+    required this.onDeleteMedication,
   });
 
   String _getTimeOfDayLabel(String time) {
@@ -4869,6 +4953,18 @@ class _MedicationTrackerSection extends StatelessWidget {
       builder: (ctx) => AddMedicationDialog(
         onSave: (medication) async {
           await onAddMedication(medication);
+        },
+      ),
+    );
+  }
+
+  void _showEditMedicationDialog(BuildContext context, Medication medication) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AddMedicationDialog(
+        existingMedication: medication,
+        onSave: (updatedMedication) async {
+          await onUpdateMedication(medication, updatedMedication);
         },
       ),
     );
@@ -5027,6 +5123,8 @@ class _MedicationTrackerSection extends StatelessWidget {
                                   getTimeLabel: _getTimeOfDayLabel,
                                   getTimeIcon: _getTimeIcon,
                                   onTap: () => onQuickLogMedication(med),
+                                  onEdit: () => _showEditMedicationDialog(context, med),
+                                  onDelete: () => onDeleteMedication(med),
                                 )),
                           ],
                         ),
@@ -5051,12 +5149,16 @@ class _MedicationTile extends StatefulWidget {
   final String Function(String) getTimeLabel;
   final IconData Function(String) getTimeIcon;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   const _MedicationTile({
     required this.medication,
     required this.getTimeLabel,
     required this.getTimeIcon,
     required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -5080,11 +5182,42 @@ class _MedicationTileState extends State<_MedicationTile> {
     }
   }
 
+  void _showOptions(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.edit, color: cs.primary),
+              title: const Text('Edit Medication'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                widget.onEdit();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete, color: cs.error),
+              title: const Text('Delete Medication'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                widget.onDelete();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: _handleTap,
+      onLongPress: () => _showOptions(context),
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -5193,9 +5326,10 @@ class _MedicationTileState extends State<_MedicationTile> {
 
 /// Dialog for adding a new medication
 class AddMedicationDialog extends StatefulWidget {
-  const AddMedicationDialog({super.key, required this.onSave});
+  const AddMedicationDialog({super.key, required this.onSave, this.existingMedication});
 
   final Future<void> Function(Medication medication) onSave;
+  final Medication? existingMedication;
 
   @override
   State<AddMedicationDialog> createState() => _AddMedicationDialogState();
@@ -5206,6 +5340,19 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
   final _dosageController = TextEditingController();
   List<TimeOfDay> _selectedTimes = [];
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingMedication != null) {
+      _nameController.text = widget.existingMedication!.name;
+      _dosageController.text = widget.existingMedication!.dosage ?? '';
+      _selectedTimes = widget.existingMedication!.times.map((timeStr) {
+        final parts = timeStr.split(':');
+        return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+      }).toList();
+    }
+  }
 
   // Quick time presets
   static const _morningTime = TimeOfDay(hour: 8, minute: 0);
@@ -5294,7 +5441,7 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
       ..sort();
 
     final medication = Medication(
-      id: const Uuid().v4(),
+      id: widget.existingMedication?.id ?? const Uuid().v4(),
       name: name,
       dosage: _dosageController.text.trim().isEmpty
           ? null
@@ -5307,7 +5454,7 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$name added to your medications')),
+          SnackBar(content: Text(widget.existingMedication == null ? '$name added to your medications' : '$name updated')),
         );
       }
     } catch (e) {
@@ -5333,6 +5480,7 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    final isEditing = widget.existingMedication != null;
     return AlertDialog(
       title: Row(
         children: [
@@ -5345,7 +5493,7 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
             child: Icon(Icons.medication_outlined, color: cs.primary, size: 20),
           ),
           SizedBox(width: AppSpacing.sm),
-          const Text('Add Medication'),
+          Text(isEditing ? 'Edit Medication' : 'Add Medication'),
         ],
       ),
       content: SingleChildScrollView(
