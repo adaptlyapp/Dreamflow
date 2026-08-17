@@ -298,19 +298,54 @@ class OpenAIClient {
   String _productKey({required String title, String? desc, String? cond}) =>
       'prod|t=${title.trim().toLowerCase()}|d=${(desc ?? '').trim().toLowerCase()}|c=${(cond ?? '').trim().toLowerCase()}';
 
-  /// Generate a milestone plan from a natural language description.
-  /// Returns a structured object with milestones, each containing title, description, dueInDays,
-  /// and optionally dueTime (local time suggestion) when multiple milestones share the same day.
+  /// Backwards-compatible wrapper: returns only the milestone list.
+  /// Prefer [generatePlanBreakdown] to also get the AI's goal summary,
+  /// complexity level and category-of-help reasoning.
   Future<List<Map<String, dynamic>>> generateMilestones({
     required String description,
     int milestones = 5,
     int durationWeeks = 8,
     int? durationDays,
     String? conditionName,
-    String? conditionDetailsSummary, // AI summary from ConditionDetail.toAiSummary()
-    List<Map<String, dynamic>>? nearbyResources, // [{ name, type, distanceMi, availability, address }]
-    List<Map<String, dynamic>>? relatedCommunities, // [{ name, memberCount }]
-    List<Map<String, String>>? userSuggestions, // [{ name, note, type }]
+    String? conditionDetailsSummary,
+    List<Map<String, dynamic>>? nearbyResources,
+    List<Map<String, dynamic>>? relatedCommunities,
+    List<Map<String, String>>? userSuggestions,
+  }) async {
+    final breakdown = await generatePlanBreakdown(
+      description: description,
+      milestones: milestones,
+      durationWeeks: durationWeeks,
+      durationDays: durationDays,
+      conditionName: conditionName,
+      conditionDetailsSummary: conditionDetailsSummary,
+      nearbyResources: nearbyResources,
+      relatedCommunities: relatedCommunities,
+      userSuggestions: userSuggestions,
+    );
+    return List<Map<String, dynamic>>.from(breakdown['milestones'] as List? ?? const []);
+  }
+
+  /// Goal Breakdown Engine: asks the AI to first reason about what kinds of
+  /// help are needed to accomplish the user's goal, then translate that
+  /// reasoning into concrete milestones tagged with helpType.
+  ///
+  /// Returns a map with:
+  /// - "goalSummary" (String): a one-sentence restatement of the goal
+  /// - "complexityLevel" (String): one of "low" | "medium" | "high"
+  /// - "needCategories" (List<Map>): [{ "type": <helpType>, "reason": "..." }, ...]
+  /// - "milestones" (List<Map>): concrete milestones (same shape as before,
+  ///   each with title, description, dueInDays, dueTime, helpType).
+  Future<Map<String, dynamic>> generatePlanBreakdown({
+    required String description,
+    int milestones = 5,
+    int durationWeeks = 8,
+    int? durationDays,
+    String? conditionName,
+    String? conditionDetailsSummary,
+    List<Map<String, dynamic>>? nearbyResources,
+    List<Map<String, dynamic>>? relatedCommunities,
+    List<Map<String, String>>? userSuggestions,
   }) async {
     debugPrint('🎯🎯🎯 [OpenAI] generateMilestones called! description="$description", milestones=$milestones, condition="$conditionName"');
     if (!AiSafetyPolicy.enabled) {
@@ -430,24 +465,46 @@ class OpenAIClient {
                // Normalize schedule so it always fits the selected duration and can support
                // multiple milestones per day with suggested times.
                final normalized = _normalizeSchedule(list, totalDays: totalDays);
+
+               // Extract goal breakdown reasoning fields.
+               final goalSummary = (parsed['goalSummary'] ?? '').toString().trim();
+               final complexityLevel = _normalizeComplexity((parsed['complexityLevel'] ?? '').toString());
+               final rawCategories = (parsed['needCategories'] as List?) ?? const [];
+               final needCategories = rawCategories
+                   .whereType<Map>()
+                   .map<Map<String, String>>((m) => {
+                         'type': _normalizeHelpType((m['type'] ?? '').toString()),
+                         'reason': (m['reason'] ?? '').toString().trim(),
+                       })
+                   .where((m) => (m['type'] ?? '').isNotEmpty)
+                   .toList();
+               debugPrint('🧠 [OpenAI] goalSummary="$goalSummary" complexity=$complexityLevel categories=${needCategories.map((c) => c['type']).toList()}');
+
+               Map<String, dynamic> buildBreakdown(List<Map<String, dynamic>> ms) => {
+                     'goalSummary': goalSummary,
+                     'complexityLevel': complexityLevel,
+                     'needCategories': needCategories,
+                     'milestones': ms,
+                   };
+
               // Validate tailoring: avoid generic advice; ensure goal text appears in each description
                if (_needsRefinement(
                  normalized,
-                description,
-                conditionName: conditionName,
-                conditionDetailsSummary: conditionDetailsSummary,
-              )) {
-                if (!strictTried) {
-                  debugPrint('OpenAI result too generic; retrying with strict constraints');
-                  strictTried = true;
-                  // fall through to retry loop by continuing
-                } else {
-                  debugPrint('OpenAI result still generic after strict prompt; accepting but flagged');
-                  return normalized;
-                }
-              } else {
-                return normalized;
-              }
+                 description,
+                 conditionName: conditionName,
+                 conditionDetailsSummary: conditionDetailsSummary,
+               )) {
+                 if (!strictTried) {
+                   debugPrint('OpenAI result too generic; retrying with strict constraints');
+                   strictTried = true;
+                   // fall through to retry loop by continuing
+                 } else {
+                   debugPrint('OpenAI result still generic after strict prompt; accepting but flagged');
+                   return buildBreakdown(normalized);
+                 }
+               } else {
+                 return buildBreakdown(normalized);
+               }
             } catch (e) {
               debugPrint('OpenAI JSON parse error: $e');
               throw Exception('Malformed JSON from AI');
@@ -488,16 +545,15 @@ class OpenAIClient {
 
     final conditionAnchors = hasConditionDetails ? _extractConditionAnchors(conditionDetailsSummary) : const <String>[];
     final anchorsBlock = conditionAnchors.isNotEmpty
-        ? 'Use these exact condition-detail anchor phrases frequently (include at least ONE in EVERY milestone description):\n- ${conditionAnchors.take(10).join('\n- ')}\n'
+        ? 'When writing milestone descriptions, consider weaving in these meaningful condition details naturally when relevant:\n- ${conditionAnchors.take(10).join('\n- ')}\n'
         : '';
 
     final strictness = strict
         ? '''
 Strict mode (do not violate):
 - FORBIDDEN unless explicitly present in the user's goal text: "balanced diet", "eat healthy", "stay hydrated", "drink more water", "exercise regularly", "work out more", "manage stress", "reduce stress", "self‑care", "healthy lifestyle", "consult a professional".
-- Each milestone description must literally include this exact user goal text: "$description".
 - Use concrete, domain-specific actions that obviously operationalize "$description". No generic wellness tips.
-${hasConditionDetails && conditionAnchors.isNotEmpty ? '- EVERY milestone description must also literally include at least ONE of these exact anchor phrases:\n  - ${conditionAnchors.take(10).join('\n  - ')}\n' : ''}
+- Keep milestones clearly relevant to the user's goal and condition. Make the connection to their goal and context obvious in each step.
 '''
         : '';
 
@@ -575,13 +631,12 @@ $ctx
 $conditionCtx
   ${anchorsBlock.isEmpty ? '' : anchorsBlock}
 Tailoring requirements (critical):
-- Use the user's exact goal wording in EVERY milestone description at least once. Quote it exactly: "$description".
-- Do not say "your goal" generically; restate the goal explicitly each time.
-- If the goal mentions a specific activity, tool, location, quantity, time, or constraint, incorporate that exact detail verbatim in each description.
-- Keep titles concise; if repeating the full goal makes the title too long, keep the title short and include the exact goal text in the description.
+- Keep milestones clearly aligned to "$description". Each step should obviously contribute to achieving this goal.
+- When the goal mentions specific activities, tools, locations, quantities, times, or constraints, weave those naturally into relevant milestones.
+- Keep titles concise and action-oriented.
 - Prefer verbs and specifics (who/what/when/where) over generalities.
-${hasCondition ? ' - Explicitly reference "$conditionName" in EVERY milestone description (e.g., "…while managing $conditionName" or "…suitable for $conditionName").\n - Let "$conditionName" lead the plan sequencing and constraints (e.g., gentler ramp-up, rest days, or pacing if appropriate for accessibility).\n - Avoid clinical or diagnostic instructions; keep it educational and practical.' : ''}
-  ${hasConditionDetails ? ' - IMPORTANT: You MUST reference the user\'s condition details in EVERY milestone description (injury level/type, mobility status, function, devices, abilities, challenges). Treat them as hard constraints (accessibility, pacing, equipment, environment) — not optional context.' : ''}
+${hasCondition ? ' - Reference "$conditionName" naturally throughout the plan when it meaningfully guides the action.\n - Let "$conditionName" lead the plan sequencing and constraints (e.g., gentler ramp-up, rest days, or pacing if appropriate for accessibility).\n - Avoid clinical or diagnostic instructions; keep it educational and practical.' : ''}
+  ${hasConditionDetails ? ' - Incorporate the user\'s condition details (injury level/type, mobility status, function, devices, abilities, challenges) when they guide how a step should be done. Treat them as hard constraints for accessibility, pacing, equipment, and environment — not optional context.' : ''}
 $strictness
 
 Use of local help (important):
@@ -590,13 +645,23 @@ Use of local help (important):
 - Only include a local item if it obviously helps accomplish "$description"; otherwise use at-home or self-guided steps.
  $resourcesBlock$communitiesBlock$userNotesBlock
 
-IMPORTANT: Return a JSON object with exactly this shape:
+IMPORTANT: Return a JSON object with EXACTLY this shape (all keys required):
 {
+  "goalSummary": "one short sentence restating what the user is trying to accomplish",
+  "complexityLevel": "low | medium | high",
+  "needCategories": [
+    {"type": "expert|product|community|learning|action|tracking|environment",
+     "reason": "1 short sentence explaining why this kind of help is needed for THIS goal"}
+  ],
   "milestones": [
-    {"title": "", "description": "", "dueInDays": 7, "dueTime": "09:00", "helpType": "learning"},
-    ...
+    {"title": "", "description": "", "dueInDays": 7, "dueTime": "09:00", "helpType": "learning"}
   ]
 }
+
+Rules for the reasoning fields:
+- "needCategories" must ONLY include categories that are actually needed for this goal (usually 3–6). Do NOT list every possible category.
+- Each helpType used in "milestones" MUST also appear in "needCategories".
+- Keep "goalSummary" ≤ 20 words and non-clinical.
  
 
 Primary goal (from user):
@@ -604,6 +669,16 @@ Primary goal (from user):
 $description
 """
 ''';
+  }
+
+  /// Normalize a free-form complexity string to low|medium|high.
+  static String _normalizeComplexity(String raw) {
+    final s = raw.trim().toLowerCase();
+    if (s.isEmpty) return '';
+    if (s.contains('low') || s.contains('simple') || s.contains('easy')) return 'low';
+    if (s.contains('high') || s.contains('complex') || s.contains('hard') || s.contains('difficult')) return 'high';
+    if (s.contains('med') || s.contains('moderate')) return 'medium';
+    return '';
   }
 
   /// Normalize a free-form help type string to one of the canonical values.

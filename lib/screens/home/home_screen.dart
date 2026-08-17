@@ -135,6 +135,20 @@ class _HomeScreenState extends State<HomeScreen>
       _loadMedications(),
     ]);
     if (mounted) setState(() => _isLoading = false);
+    // After home loads, make sure all of the user's medications have
+    // native local-notification reminders scheduled. This covers users
+    // who added meds on another device/install where scheduling never ran.
+    try {
+      final user = context.read<UserProvider>().currentUser;
+      final meds = user?.medications ?? const [];
+      if (meds.isNotEmpty) {
+        debugPrint(
+            'Home._loadAll: syncing ${meds.length} medications with NotificationService');
+        await NotificationService.instance.syncMedications(meds);
+      }
+    } catch (e) {
+      debugPrint('Home._loadAll: syncMedications error: $e');
+    }
   }
 
   Future<void> _loadMedications() async {
@@ -179,9 +193,19 @@ class _HomeScreenState extends State<HomeScreen>
 
     await userProvider.updateUser(updatedUser);
     debugPrint('Home._addMedication: Added ${medication.name}');
-    // Schedule local notification reminders for this medication's times.
+    // Ensure notification permission is granted, then schedule local reminders.
     try {
+      await NotificationService.instance.requestPermission();
       await NotificationService.instance.scheduleMedication(medication);
+      if (medication.times.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Reminders set for ${medication.name} at ${medication.times.length} time${medication.times.length == 1 ? '' : 's'}',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('Home._addMedication: schedule notification error: $e');
     }
@@ -5239,6 +5263,27 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
       );
       return;
     }
+    if (_selectedTimes.isEmpty) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('No reminder time set'),
+          content: const Text(
+              "You haven't picked a time, so we can't send a reminder to take this medication. Add one now?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Save without reminder'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Pick a time'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
 
     setState(() => _isSaving = true);
 
@@ -5334,6 +5379,21 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
             Text(
               'When do you take it?',
               style: context.textStyles.titleSmall,
+            ),
+            SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.notifications_active_outlined,
+                    size: 14, color: cs.primary),
+                SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    "We'll send you a reminder at each time you pick.",
+                    style: context.textStyles.labelSmall
+                        ?.withColor(cs.onSurfaceVariant),
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: AppSpacing.sm),
             Wrap(

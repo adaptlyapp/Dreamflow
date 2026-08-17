@@ -2,9 +2,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:wellspring/models/medication.dart';
 import 'package:wellspring/models/goal.dart';
 import 'package:wellspring/models/milestone.dart';
+
+/// Top-level callback for handling notification action taps in the background.
+/// Must be a top-level or static function (annotated with @pragma).
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse response) {
+  debugPrint(
+      'NotificationService: background tap actionId=${response.actionId} payload=${response.payload}');
+}
 
 /// Local notification service using `flutter_local_notifications`.
 ///
@@ -26,6 +35,14 @@ class NotificationService {
   static const String socialChannelId = 'social_notifications';
   static const String achievementChannelId = 'achievements';
   static const String familyChannelId = 'family_alerts';
+  static const String engagementChannelId = 'daily_engagement';
+
+  // iOS notification categories (for action buttons)
+  static const String medicationCategoryId = 'MEDICATION_CATEGORY';
+
+  // Action IDs
+  static const String actionTaken = 'ACTION_MED_TAKEN';
+  static const String actionSnooze = 'ACTION_MED_SNOOZE';
 
   // Stable ID ranges per kind so we can cancel them independently.
   static const int _medBase = 100000;
@@ -34,40 +51,176 @@ class NotificationService {
   static const int _socialBase = 400000;
   static const int _achievementBase = 500000;
   static const int _familyBase = 600000;
+  static const int _engagementBase = 700000;
+
+  /// Callback invoked when user taps a notification or its action button.
+  /// Assign from main.dart / router to navigate accordingly.
+  void Function(NotificationResponse response)? onNotificationTap;
 
   Future<void> init() async {
     if (_initialized) return;
     debugPrint('NotificationService: Starting initialization...');
     try {
       tzdata.initializeTimeZones();
-      // We don't have flutter_native_timezone; assume device local.
-      // tz.local is set from system; if unset, default to UTC.
-      // ignore: unnecessary_statements
-      tz.local;
-      debugPrint('NotificationService: Timezone initialized');
+      await _resolveLocalTimezone();
     } catch (e) {
       debugPrint('NotificationService: timezone init failed: $e');
     }
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const darwin = DarwinInitializationSettings(
+
+    // Define iOS action buttons + category for medication reminders.
+    final takenAction = DarwinNotificationAction.plain(
+      actionTaken,
+      'Taken',
+      options: <DarwinNotificationActionOption>{
+        DarwinNotificationActionOption.foreground,
+      },
+    );
+    final snoozeAction = DarwinNotificationAction.plain(
+      actionSnooze,
+      'Snooze 10 min',
+    );
+    final medCategory = DarwinNotificationCategory(
+      medicationCategoryId,
+      actions: <DarwinNotificationAction>[takenAction, snoozeAction],
+      options: <DarwinNotificationCategoryOption>{
+        DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
+      },
+    );
+
+    final darwin = DarwinInitializationSettings(
+      // We request explicitly via requestPermission() with critical/time-sensitive too.
       requestAlertPermission: false,
       requestBadgePermission: false,
       requestSoundPermission: false,
+      // Show notifications when the app is in the foreground.
+      defaultPresentAlert: true,
+      defaultPresentBadge: true,
+      defaultPresentSound: true,
+      defaultPresentBanner: true,
+      defaultPresentList: true,
+      notificationCategories: <DarwinNotificationCategory>[medCategory],
     );
-    const settings = InitializationSettings(
+
+    final settings = InitializationSettings(
       android: android,
       iOS: darwin,
       macOS: darwin,
     );
 
     try {
-      await _plugin.initialize(settings: settings);
+      await _plugin.initialize(
+        settings: settings,
+        onDidReceiveNotificationResponse: _onDidReceiveNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+      );
       _initialized = true;
       debugPrint('✅ NotificationService: Initialized successfully');
-      debugPrint('NOTE: Notifications only work on real iOS/Android devices, not in web preview.');
+      debugPrint(
+          'NOTE: Notifications only work on real iOS/Android devices, not in web preview.');
     } catch (e) {
       debugPrint('❌ NotificationService: init error: $e');
+    }
+  }
+
+  Future<void> _resolveLocalTimezone() async {
+    // 1. Preferred: use flutter_timezone to get the IANA identifier.
+    try {
+      final info = await FlutterTimezone.getLocalTimezone();
+      final String localName = info.identifier;
+      if (localName.isNotEmpty) {
+        tz.setLocalLocation(tz.getLocation(localName));
+        debugPrint('NotificationService: Timezone set to $localName');
+        return;
+      }
+    } catch (e) {
+      debugPrint(
+          'NotificationService: flutter_timezone lookup failed: $e — falling back to device offset.');
+    }
+    // 2. Fallback: use device UTC offset to pick a matching Etc/GMT zone.
+    // This is not a real-world zone name but it guarantees wall-clock math
+    // matches the device, which is what users actually care about.
+    try {
+      final offset = DateTime.now().timeZoneOffset;
+      final totalMinutes = offset.inMinutes;
+      final hours = totalMinutes ~/ 60;
+      // Etc/GMT zones have INVERTED signs (Etc/GMT-5 == UTC+5).
+      final sign = hours >= 0 ? '-' : '+';
+      final absHours = hours.abs();
+      final name = 'Etc/GMT$sign$absHours';
+      try {
+        tz.setLocalLocation(tz.getLocation(name));
+        debugPrint(
+            'NotificationService: Timezone fallback set to $name (device offset ${offset.inHours}h)');
+      } catch (_) {
+        // Last resort: leave tz.local as-is (UTC) but log clearly.
+        debugPrint(
+            'NotificationService: WARNING — could not set local timezone. Device offset=${offset.inHours}h. Schedules will use absolute DateTime.now() math to compensate.');
+      }
+    } catch (e) {
+      debugPrint('NotificationService: offset fallback failed: $e');
+    }
+  }
+
+  /// Builds a TZDateTime for [hour]:[minute] today (or tomorrow if already
+  /// passed) based on the DEVICE's actual local wall clock — NOT `tz.local`.
+  ///
+  /// This is defensive: even if `tz.local` was not correctly resolved and is
+  /// still UTC, the absolute instant we schedule will match the user's real
+  /// wall-clock time on the device.
+  tz.TZDateTime _nextInstantForTime(int hour, int minute) {
+    final now = DateTime.now(); // device local wall time
+    var target = DateTime(now.year, now.month, now.day, hour, minute);
+    if (!target.isAfter(now)) {
+      target = target.add(const Duration(days: 1));
+    }
+    // Convert absolute instant into whatever tz.local is (correct or UTC).
+    return tz.TZDateTime.from(target, tz.local);
+  }
+
+  void _onDidReceiveNotificationResponse(NotificationResponse response) {
+    debugPrint(
+        'NotificationService: tap actionId=${response.actionId} payload=${response.payload}');
+    // Handle snooze inline: re-schedule same notification 10 minutes out.
+    if (response.actionId == actionSnooze) {
+      _snoozeMedication(response);
+    }
+    // Delegate other taps to the app-level handler (for navigation).
+    try {
+      onNotificationTap?.call(response);
+    } catch (e) {
+      debugPrint('NotificationService.onNotificationTap error: $e');
+    }
+  }
+
+  Future<void> _snoozeMedication(NotificationResponse response) async {
+    try {
+      final payload = response.payload;
+      String? medName;
+      String? dosage;
+      if (payload != null && payload.isNotEmpty) {
+        // Payload format: med|<id>|<name>|<dosage>
+        final parts = payload.split('|');
+        if (parts.length >= 3) medName = parts[2];
+        if (parts.length >= 4) dosage = parts[3];
+      }
+      final when = tz.TZDateTime.now(tz.local)
+          .add(const Duration(minutes: 10));
+      await _zonedSchedule(
+        id: DateTime.now().millisecondsSinceEpoch.remainder(1 << 30),
+        title: 'Medication reminder',
+        body: (dosage == null || dosage.isEmpty)
+            ? 'Time to take ${medName ?? 'your medication'}'
+            : 'Time to take $medName ($dosage)',
+        when: when,
+        channelId: medicationChannelId,
+        payload: payload,
+        useMedicationCategory: true,
+      );
+      debugPrint('NotificationService: Snoozed medication for 10 minutes');
+    } catch (e) {
+      debugPrint('NotificationService._snoozeMedication error: $e');
     }
   }
 
@@ -75,40 +228,49 @@ class NotificationService {
     await init();
     debugPrint('NotificationService: Requesting permissions...');
     try {
-      final ios = _plugin
-          .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin>();
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
       if (ios != null) {
-        debugPrint('NotificationService: iOS platform detected, requesting permissions');
+        debugPrint(
+            'NotificationService: iOS platform detected, requesting permissions');
         final ok = await ios.requestPermissions(
           alert: true,
           badge: true,
           sound: true,
+          // Allow time-sensitive medication reminders to break through Focus/DND.
+          // Requires "Time Sensitive Notifications" capability in Xcode entitlements.
+          critical: false,
+          provisional: false,
         );
-        debugPrint('NotificationService: iOS permission result: ${ok == true ? "GRANTED" : "DENIED"} ');
+        debugPrint(
+            'NotificationService: iOS permission result: ${ok == true ? "GRANTED" : "DENIED"} ');
         return ok ?? false;
       }
-      final android = _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
       if (android != null) {
-        debugPrint('NotificationService: Android platform detected, requesting permissions');
+        debugPrint(
+            'NotificationService: Android platform detected, requesting permissions');
         final ok = await android.requestNotificationsPermission();
-        debugPrint('NotificationService: Android permission result: ${ok == true ? "GRANTED" : "DENIED"} ');
-        // Best-effort: also ask for exact alarms.
+        debugPrint(
+            'NotificationService: Android permission result: ${ok == true ? "GRANTED" : "DENIED"} ');
         try {
           await android.requestExactAlarmsPermission();
         } catch (_) {}
         return ok ?? false;
       }
-      debugPrint('NotificationService: No native platform detected (likely web). Notifications will not work.');
+      debugPrint(
+          'NotificationService: No native platform detected (likely web). Notifications will not work.');
     } catch (e) {
       debugPrint('NotificationService.requestPermission error: $e');
     }
     return false;
   }
 
-  NotificationDetails _detailsFor(String channelId) {
+  NotificationDetails _detailsFor(
+    String channelId, {
+    bool useMedicationCategory = false,
+  }) {
     String name;
     switch (channelId) {
       case medicationChannelId:
@@ -129,17 +291,47 @@ class NotificationService {
       case familyChannelId:
         name = 'Family Alerts';
         break;
+      case engagementChannelId:
+        name = 'Daily Reminders';
+        break;
       default:
         name = 'Reminders';
     }
+    final isMedication = channelId == medicationChannelId;
     final android = AndroidNotificationDetails(
       channelId,
       name,
       channelDescription: name,
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: isMedication ? Importance.max : Importance.high,
+      priority: isMedication ? Priority.max : Priority.high,
+      category:
+          isMedication ? AndroidNotificationCategory.alarm : AndroidNotificationCategory.reminder,
+      fullScreenIntent: false,
+      playSound: true,
+      enableVibration: true,
+      actions: isMedication
+          ? const <AndroidNotificationAction>[
+              AndroidNotificationAction(actionTaken, 'Taken',
+                  showsUserInterface: true, cancelNotification: true),
+              AndroidNotificationAction(actionSnooze, 'Snooze 10 min',
+                  showsUserInterface: false, cancelNotification: true),
+            ]
+          : null,
     );
-    const darwin = DarwinNotificationDetails();
+    final darwin = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      presentBanner: true,
+      presentList: true,
+      // Time-sensitive medication alerts bypass Focus/Silent modes on iOS 15+.
+      interruptionLevel: isMedication
+          ? InterruptionLevel.timeSensitive
+          : InterruptionLevel.active,
+      categoryIdentifier:
+          (isMedication || useMedicationCategory) ? medicationCategoryId : null,
+      threadIdentifier: channelId,
+    );
     return NotificationDetails(
       android: android,
       iOS: darwin,
@@ -152,6 +344,7 @@ class NotificationService {
     required String title,
     required String body,
     String channelId = generalChannelId,
+    String? payload,
   }) async {
     await init();
     debugPrint('🔔 NOTIFICATION: [$channelId] $title - $body');
@@ -161,11 +354,13 @@ class NotificationService {
         title: title,
         body: body,
         notificationDetails: _detailsFor(channelId),
+        payload: payload,
       );
       debugPrint('✅ Notification sent successfully (id: $id)');
     } catch (e) {
       debugPrint('❌ NotificationService.showNow error: $e');
-      debugPrint('NOTE: Local notifications do not work in web preview. Deploy to iOS/Android to test.');
+      debugPrint(
+          'NOTE: Local notifications do not work in web preview. Deploy to iOS/Android to test.');
     }
   }
 
@@ -176,6 +371,8 @@ class NotificationService {
     required tz.TZDateTime when,
     required String channelId,
     DateTimeComponents? matchComponents,
+    String? payload,
+    bool useMedicationCategory = false,
   }) async {
     try {
       await _plugin.zonedSchedule(
@@ -183,9 +380,11 @@ class NotificationService {
         title: title,
         body: body,
         scheduledDate: when,
-        notificationDetails: _detailsFor(channelId),
+        notificationDetails:
+            _detailsFor(channelId, useMedicationCategory: useMedicationCategory),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: matchComponents,
+        payload: payload,
       );
     } catch (e) {
       debugPrint('NotificationService._zonedSchedule error: $e');
@@ -200,6 +399,8 @@ class NotificationService {
   Future<void> scheduleMedication(Medication med) async {
     await init();
     await cancelMedication(med.id);
+    debugPrint(
+        'NotificationService.scheduleMedication: ${med.name} times=${med.times}');
     for (var i = 0; i < med.times.length; i++) {
       final t = med.times[i];
       final parts = t.split(':');
@@ -208,27 +409,21 @@ class NotificationService {
       final minute = int.tryParse(parts[1]);
       if (hour == null || minute == null) continue;
 
-      final now = tz.TZDateTime.now(tz.local);
-      var when = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        hour,
-        minute,
-      );
-      if (when.isBefore(now)) {
-        when = when.add(const Duration(days: 1));
-      }
+      final when = _nextInstantForTime(hour, minute);
+      debugPrint(
+          'NotificationService.scheduleMedication: ${med.name} @ ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} device-local -> scheduled TZ instant=$when (tz.local=${tz.local.name})');
+      final payload =
+          'med|${med.id}|${med.name}|${med.dosage ?? ''}';
       await _zonedSchedule(
         id: _medIdFor(med.id, i),
-        title: 'Medication reminder',
+        title: '💊 Time for ${med.name}',
         body: med.dosage == null || med.dosage!.isEmpty
-            ? 'Time to take ${med.name}'
-            : 'Time to take ${med.name} (${med.dosage})',
+            ? 'Tap to log this dose'
+            : 'Take ${med.dosage} — tap to log this dose',
         when: when,
         channelId: medicationChannelId,
         matchComponents: DateTimeComponents.time,
+        payload: payload,
       );
     }
   }
@@ -249,6 +444,63 @@ class NotificationService {
     }
   }
 
+  // -------------------- DAILY ENGAGEMENT (PUSH-BACK-TO-APP) --------------------
+
+  /// Schedules recurring daily local reminders to bring the user back to the app.
+  /// Times default to a morning check-in (9:00) and an evening log reminder (20:00).
+  Future<void> scheduleDailyEngagementReminders({
+    List<({int hour, int minute, String title, String body})>? slots,
+  }) async {
+    await init();
+    final slotsToUse = slots ??
+        <({int hour, int minute, String title, String body})>[
+          (
+            hour: 9,
+            minute: 0,
+            title: 'Good morning 👋',
+            body: 'Check in with Adaptly — log your meds, mood, and start your day.',
+          ),
+          (
+            hour: 20,
+            minute: 0,
+            title: 'Evening check-in',
+            body: 'How did today go? Take a moment to log your progress in Adaptly.',
+          ),
+        ];
+
+    // Cancel any prior engagement reminders (up to 10 slots).
+    for (var i = 0; i < 10; i++) {
+      try {
+        await _plugin.cancel(id: _engagementBase + i);
+      } catch (_) {}
+    }
+
+    for (var i = 0; i < slotsToUse.length; i++) {
+      final s = slotsToUse[i];
+      final when = _nextInstantForTime(s.hour, s.minute);
+      await _zonedSchedule(
+        id: _engagementBase + i,
+        title: s.title,
+        body: s.body,
+        when: when,
+        channelId: engagementChannelId,
+        matchComponents: DateTimeComponents.time,
+        payload: 'engagement|open_home',
+      );
+    }
+    debugPrint(
+        'NotificationService: Scheduled ${slotsToUse.length} daily engagement reminders');
+  }
+
+  Future<void> cancelDailyEngagementReminders() async {
+    await init();
+    for (var i = 0; i < 10; i++) {
+      try {
+        await _plugin.cancel(id: _engagementBase + i);
+      } catch (_) {}
+    }
+  }
+
   // -------------------- GOAL --------------------
 
   int _goalIdFor(String goalId) =>
@@ -261,9 +513,7 @@ class NotificationService {
       return;
     }
     // Daily 9am nudge for active goals.
-    final now = tz.TZDateTime.now(tz.local);
-    var when = tz.TZDateTime(tz.local, now.year, now.month, now.day, 9, 0);
-    if (when.isBefore(now)) when = when.add(const Duration(days: 1));
+    final when = _nextInstantForTime(9, 0);
     await _zonedSchedule(
       id: _goalIdFor(goal.id),
       title: 'Goal reminder',
@@ -293,7 +543,6 @@ class NotificationService {
       return;
     }
     final due = m.dueDate!;
-    // Notify at 9am the day before, or at due time itself if already past day-1.
     final dayBefore = DateTime(due.year, due.month, due.day)
         .subtract(const Duration(days: 1))
         .add(const Duration(hours: 9));

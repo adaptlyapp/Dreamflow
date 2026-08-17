@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -28,8 +29,16 @@ class _TrackerScreenState extends State<TrackerScreen>
   bool _isLoading = true;
   DateTime _selectedDate = DateTime.now();
   int? _todaySteps;
+  int? _latestHeartRate;
+  int? _systolicBP;
+  int? _diastolicBP;
+  double? _latestWeight;
+  double? _latestTemperature;
+  double? _lastNightSleep;
+  DateTime? _lastHealthSync;
   bool _healthAuthorized = false;
   bool _checkingHealth = false;
+  Timer? _liveTickTimer;
   int _tabIndex = 0;
 
   bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
@@ -45,6 +54,7 @@ class _TrackerScreenState extends State<TrackerScreen>
   @override
   void dispose() {
     _healthService.removeListener(_onHealthDataUpdated);
+    _liveTickTimer?.cancel();
     super.dispose();
   }
 
@@ -52,7 +62,17 @@ class _TrackerScreenState extends State<TrackerScreen>
     if (!mounted) return;
     debugPrint('TrackerScreen: Health data updated: $data');
     setState(() {
-      _todaySteps = data['steps'] as int?;
+      _todaySteps = data['steps'] as int? ?? _todaySteps;
+      _latestHeartRate = data['heartRate'] as int? ?? _latestHeartRate;
+      _systolicBP = data['systolicBP'] as int? ?? _systolicBP;
+      _diastolicBP = data['diastolicBP'] as int? ?? _diastolicBP;
+      final w = data['weight'];
+      if (w is num) _latestWeight = w.toDouble();
+      final t = data['temperature'];
+      if (t is num) _latestTemperature = t.toDouble();
+      final sq = data['sleepQuality'];
+      if (sq is num) _lastNightSleep = sq.toDouble() * 0.8; // reverse map
+      _lastHealthSync = DateTime.now();
     });
   }
 
@@ -149,8 +169,19 @@ class _TrackerScreenState extends State<TrackerScreen>
     if (!_isIOS) return;
     setState(() => _checkingHealth = true);
     try {
-      final has = await _healthService.hasAuthorization();
+      var has = await _healthService.hasAuthorization();
       if (!mounted) return;
+
+      // Auto-request Apple Health permission if we don't already have it.
+      // This shows the iOS HealthKit sheet automatically on load so the user
+      // never has to press a "Connect" button.
+      if (!has) {
+        debugPrint(
+            'TrackerScreen: Auto-requesting Apple Health authorization on load');
+        has = await _healthService.requestAuthorization();
+        if (!mounted) return;
+      }
+
       _healthAuthorized = has;
       if (has) {
         // Enable background delivery for continuous sync
@@ -159,17 +190,32 @@ class _TrackerScreenState extends State<TrackerScreen>
         // Perform initial sync
         final data = await _healthService.syncNow();
         if (!mounted) return;
-        setState(() => _todaySteps = data['steps'] as int?);
+        _onHealthDataUpdated(data);
+        _startLiveTick();
 
         debugPrint('TrackerScreen: Auto-sync enabled for Apple Health');
       } else {
-        setState(() {}); // update UI to show connect prompt
+        setState(() {}); // update UI to show connect prompt fallback
       }
     } catch (e) {
       debugPrint('TrackerScreen: loadHealth failed: $e');
     } finally {
       if (mounted) setState(() => _checkingHealth = false);
     }
+  }
+
+  /// Fast in-app tick to poll health data every 10s while the screen is
+  /// visible, so the bar feels continuously updated without any user action.
+  void _startLiveTick() {
+    _liveTickTimer?.cancel();
+    if (!_isIOS) return;
+    _liveTickTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted || !_healthAuthorized) return;
+      final data = await _healthService.getTodayHealthData();
+      if (!mounted) return;
+      _onHealthDataUpdated(data);
+    });
   }
 
   Future<void> _connectAppleHealth() async {
@@ -185,7 +231,8 @@ class _TrackerScreenState extends State<TrackerScreen>
         // Perform initial sync
         final data = await _healthService.syncNow();
         if (!mounted) return;
-        setState(() => _todaySteps = data['steps'] as int?);
+        _onHealthDataUpdated(data);
+        _startLiveTick();
 
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Apple Health connected - Auto-sync enabled')));
@@ -328,10 +375,6 @@ class _TrackerScreenState extends State<TrackerScreen>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (_isIOS) ...[
-                                      _buildAppleHealthRow(),
-                                      SizedBox(height: AppSpacing.md),
-                                    ],
                                     AnimatedSwitcher(
                                       duration:
                                           const Duration(milliseconds: 250),
@@ -348,6 +391,10 @@ class _TrackerScreenState extends State<TrackerScreen>
                                             .withValues(alpha: 0.28),
                                       ),
                                       SizedBox(height: AppSpacing.lg),
+                                      if (_isIOS) ...[
+                                        _buildAppleHealthRow(),
+                                        SizedBox(height: AppSpacing.md),
+                                      ],
                                       _buildRecentEntries(),
                                     ] else
                                       Center(
@@ -482,7 +529,10 @@ class _TrackerScreenState extends State<TrackerScreen>
         ),
       );
     }
-    // Authorized
+    // Authorized: continuous live bar
+    final syncedLabel = _lastHealthSync == null
+        ? 'Syncing…'
+        : 'Live • updated ${_relativeTime(_lastHealthSync!)}';
     return Card(
       child: Padding(
         padding: AppSpacing.paddingMd,
@@ -502,26 +552,20 @@ class _TrackerScreenState extends State<TrackerScreen>
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Apple Health Connected',
-                          style: text.titleSmall?.semiBold),
+                      Row(
+                        children: [
+                          Text('Apple Watch',
+                              style: text.titleSmall?.semiBold),
+                          SizedBox(width: AppSpacing.sm),
+                          _LivePulseDot(color: cs.primary),
+                        ],
+                      ),
                       SizedBox(height: 2),
-                      Text('Today\'s activity from Apple Watch',
+                      Text(syncedLabel,
                           style:
                               text.bodySmall?.withColor(cs.onSurfaceVariant)),
                     ]),
               ),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final steps = await _healthService.getTodaySteps();
-                  if (!mounted) return;
-                  setState(() => _todaySteps = steps);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Health data refreshed')));
-                },
-                icon: Icon(Icons.refresh, color: cs.primary),
-                label: Text('Refresh',
-                    style: text.labelLarge?.withColor(cs.primary)),
-              )
             ]),
             SizedBox(height: AppSpacing.md),
             Wrap(
@@ -533,12 +577,51 @@ class _TrackerScreenState extends State<TrackerScreen>
                   label: 'Steps',
                   value: _todaySteps?.toString() ?? '—',
                 ),
+                _HealthMetricChip(
+                  icon: Icons.favorite_border,
+                  label: 'Heart Rate',
+                  value: _latestHeartRate != null
+                      ? '${_latestHeartRate!} bpm'
+                      : '—',
+                ),
+                if (_systolicBP != null && _diastolicBP != null)
+                  _HealthMetricChip(
+                    icon: Icons.monitor_heart_outlined,
+                    label: 'Blood Pressure',
+                    value: '${_systolicBP!}/${_diastolicBP!}',
+                  ),
+                if (_lastNightSleep != null)
+                  _HealthMetricChip(
+                    icon: Icons.bedtime_outlined,
+                    label: 'Sleep',
+                    value: '${_lastNightSleep!.toStringAsFixed(1)}h',
+                  ),
+                if (_latestWeight != null)
+                  _HealthMetricChip(
+                    icon: Icons.monitor_weight_outlined,
+                    label: 'Weight',
+                    value: '${_latestWeight!.toStringAsFixed(1)} kg',
+                  ),
+                if (_latestTemperature != null)
+                  _HealthMetricChip(
+                    icon: Icons.thermostat_outlined,
+                    label: 'Temp',
+                    value: '${_latestTemperature!.toStringAsFixed(1)}°C',
+                  ),
               ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _relativeTime(DateTime t) {
+    final diff = DateTime.now().difference(t);
+    if (diff.inSeconds < 5) return 'just now';
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    return '${diff.inHours}h ago';
   }
 
   Widget _buildPainChart() {
@@ -1138,6 +1221,62 @@ class _MetricChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LivePulseDot extends StatefulWidget {
+  final Color color;
+  const _LivePulseDot({required this.color});
+
+  @override
+  State<_LivePulseDot> createState() => _LivePulseDotState();
+}
+
+class _LivePulseDotState extends State<_LivePulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final t = _c.value;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: widget.color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: widget.color.withValues(alpha: 0.5 * (1 - t)),
+                    blurRadius: 8 * t,
+                    spreadRadius: 2 * t,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text('LIVE',
+                style: context.textStyles.labelSmall?.semiBold
+                    .withColor(widget.color)),
+          ],
+        );
+      },
     );
   }
 }

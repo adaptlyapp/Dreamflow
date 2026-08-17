@@ -25,6 +25,7 @@ import 'package:wellspring/widgets/plan_share_sheet.dart';
 import 'package:wellspring/widgets/skeletons.dart';
 import 'package:wellspring/widgets/glass_card.dart';
 import 'package:wellspring/widgets/help_type_chip.dart';
+import 'package:wellspring/widgets/goal_breakdown_card.dart';
 import 'package:wellspring/services/condition_service.dart';
 import 'package:wellspring/models/condition.dart';
 import 'package:wellspring/screens/main_navigation.dart';
@@ -63,6 +64,11 @@ String? _rerollingId;
 bool _sessionChanged = false;
 bool _sessionSavedToCloud = false;
 bool _pendingSnapshotSync = false;
+// AI-produced goal breakdown from the most recent Generate Plan call.
+// Kept in-memory only (session scope) — not persisted to Supabase.
+String _breakdownGoalSummary = '';
+String _breakdownComplexity = '';
+List<Map<String, String>> _breakdownCategories = const [];
 
 @override
 void initState() {
@@ -610,14 +616,31 @@ debugPrint('[PlanEditor] Generate plan: condition details parse failed (ignored)
 
 final ai = OpenAIClient();
 debugPrint('🚀🚀🚀 [PlanEditor] ABOUT TO CALL AI! description="$description", count=$count, durationDays=$dDays, conditionName="${widget.conditionName}"');
-plan = await ai.generateMilestones(
+final breakdown = await ai.generatePlanBreakdown(
 description: description,
 milestones: count,
 durationDays: dDays,
 conditionName: widget.conditionName,
 conditionDetailsSummary: conditionDetailsSummary,
 );
-debugPrint('✅✅✅ [PlanEditor] AI plan generated: ${plan.length} items');
+plan = List<Map<String, dynamic>>.from(breakdown['milestones'] as List? ?? const []);
+// Cache the goal-breakdown reasoning so we can surface it in the UI.
+final cats = ((breakdown['needCategories'] as List?) ?? const [])
+.whereType<Map>()
+.map<Map<String, String>>((m) => {
+'type': (m['type'] ?? '').toString(),
+'reason': (m['reason'] ?? '').toString(),
+})
+.where((m) => (m['type'] ?? '').isNotEmpty)
+.toList();
+if (mounted) {
+setState(() {
+_breakdownGoalSummary = (breakdown['goalSummary'] ?? '').toString();
+_breakdownComplexity = (breakdown['complexityLevel'] ?? '').toString();
+_breakdownCategories = cats;
+});
+}
+debugPrint('✅✅✅ [PlanEditor] AI plan generated: ${plan.length} items · summary="${_breakdownGoalSummary}" · complexity=${_breakdownComplexity} · categories=${cats.map((c) => c['type']).toList()}');
 for (final item in plan) {
 debugPrint('   - ${item['title']} (helpType: ${item['helpType']})');
 }
@@ -1047,7 +1070,7 @@ shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.ci
 builder: (ctx) {
 return SafeArea(
 top: false,
-child: Padding(
+child: SingleChildScrollView(
 padding: AppSpacing.paddingLg,
 child: Column(
 mainAxisSize: MainAxisSize.min,
@@ -1130,7 +1153,7 @@ builder: (ctx) {
 return StatefulBuilder(builder: (ctx, setLocal) {
 return SafeArea(
 top: false,
-child: Padding(
+child: SingleChildScrollView(
 padding: EdgeInsets.fromLTRB(
 AppSpacing.lg,
 AppSpacing.md,
@@ -1353,9 +1376,10 @@ body: _loading
 ? const Center(child: CenteredLoadingSkeleton())
 : _items.isEmpty
 ? _EmptyState(onGenerate: _generateWithAI, onAdd: () => _addOrEdit())
-: Column(
-children: [
-Padding(
+: CustomScrollView(
+slivers: [
+SliverToBoxAdapter(
+child: Padding(
 padding: EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.xs),
 child: _TimelineSelector(
 current: _currentTimeline,
@@ -1365,7 +1389,25 @@ onSwitch: _openTimelineSwitcher,
 onSave: _saveTimelineFromCurrent,
 ),
 ),
-Padding(
+),
+if (_breakdownCategories.isNotEmpty || _breakdownGoalSummary.trim().isNotEmpty)
+SliverToBoxAdapter(
+child: Padding(
+padding: EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+child: GoalBreakdownCard(
+goalSummary: _breakdownGoalSummary,
+complexityLevel: _breakdownComplexity,
+needCategories: _breakdownCategories,
+onDismiss: () => setState(() {
+_breakdownGoalSummary = '';
+_breakdownComplexity = '';
+_breakdownCategories = const [];
+}),
+),
+),
+),
+SliverToBoxAdapter(
+child: Padding(
 padding: EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.sm),
 child: Row(
 children: [
@@ -1394,9 +1436,8 @@ onPressed: () => setState(() => _collapseFuture = !_collapseFuture),
 ],
 ),
 ),
-Expanded(
-child: ReorderableListView.builder(
-padding: AppSpacing.paddingLg.copyWith(top: AppSpacing.md),
+),
+SliverReorderableList(
 itemCount: _items.length,
 onReorder: _reorder,
 itemBuilder: (context, index) {
@@ -1404,8 +1445,13 @@ final m = _items[index];
 final isCurrent = (currentIndex != -1 && index == currentIndex && !m.completed);
 final isFuture = (currentIndex != -1 && index > currentIndex && !m.completed);
 final collapsed = _collapseFuture && isFuture && !_expandedFuture.contains(m.id);
-return _MilestoneTile(
+return Padding(
 key: ValueKey(m.id),
+padding: index == 0
+? AppSpacing.paddingLg.copyWith(top: AppSpacing.md)
+: AppSpacing.paddingLg.copyWith(top: 0),
+child: _MilestoneTile(
+key: ValueKey('${m.id}_tile'),
 milestone: m,
 index: index,
 isCurrent: isCurrent,
@@ -1429,9 +1475,9 @@ if (mounted) await _load();
 },
 onLearnMore: () => _showEducationFor(m),
 onReroll: () => _reroll(m),
+),
 );
 },
-),
 ),
 ],
 ),
@@ -1452,7 +1498,7 @@ borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
 builder: (ctx) {
 return SafeArea(
 top: false,
-child: Padding(
+child: SingleChildScrollView(
 padding: AppSpacing.paddingLg,
 child: Column(
 mainAxisSize: MainAxisSize.min,

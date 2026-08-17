@@ -197,6 +197,106 @@ class NihEducationLinks extends StatelessWidget {
     }
   }
 
+  /// Filters and prioritizes categories and articles based on user context
+  List<_NihCategory> _getRelevantCategories() {
+    final searchText = [conditionName, milestoneTitle, milestoneDescription]
+        .where((s) => s != null && s.isNotEmpty)
+        .join(' ')
+        .toLowerCase();
+    
+    if (searchText.isEmpty) return _categories;
+
+    // Score each category by relevance
+    final scoredCategories = <({_NihCategory category, int score})>[];
+    
+    for (final category in _categories) {
+      int score = 0;
+      final categoryText = category.title.toLowerCase();
+      final itemsText = category.items.map((i) => i.title.toLowerCase()).join(' ');
+      
+      // Check category title relevance
+      for (final keyword in _getKeywords(searchText)) {
+        if (categoryText.contains(keyword)) score += 5;
+        if (itemsText.contains(keyword)) score += 2;
+      }
+      
+      if (score > 0) {
+        scoredCategories.add((category: category, score: score));
+      }
+    }
+    
+    // Sort by score, return top categories + always include Rehabilitation
+    scoredCategories.sort((a, b) => b.score.compareTo(a.score));
+    final result = scoredCategories.take(4).map((sc) => sc.category).toList();
+    
+    // Always include Rehabilitation & Therapy if not already present
+    final rehabCategory = _categories.firstWhere(
+      (c) => c.title == 'Rehabilitation & Therapy',
+      orElse: () => _categories.first,
+    );
+    if (!result.contains(rehabCategory)) {
+      result.insert(0, rehabCategory);
+    }
+    
+    return result.isEmpty ? _categories.take(3).toList() : result;
+  }
+
+  /// Filters and prioritizes encyclopedia articles based on user context
+  List<_NihLink> _getRelevantArticles() {
+    final searchText = [conditionName, milestoneTitle, milestoneDescription]
+        .where((s) => s != null && s.isNotEmpty)
+        .join(' ')
+        .toLowerCase();
+    
+    if (searchText.isEmpty) return _encyclopediaArticles.take(8).toList();
+
+    // Score each article by relevance
+    final scoredArticles = <({_NihLink article, int score})>[];
+    
+    for (final article in _encyclopediaArticles) {
+      int score = 0;
+      final articleText = article.title.toLowerCase();
+      
+      for (final keyword in _getKeywords(searchText)) {
+        if (articleText.contains(keyword)) score += 10;
+        // Partial matches
+        if (keyword.length > 4 && articleText.contains(keyword.substring(0, 4))) score += 2;
+      }
+      
+      if (score > 0) {
+        scoredArticles.add((article: article, score: score));
+      }
+    }
+    
+    scoredArticles.sort((a, b) => b.score.compareTo(a.score));
+    final topArticles = scoredArticles.take(6).map((sa) => sa.article).toList();
+    
+    // If we have very few relevant articles, supplement with common recovery topics
+    if (topArticles.length < 4) {
+      final defaultArticles = _encyclopediaArticles.where((a) => 
+        a.title.contains('Therapy') || 
+        a.title.contains('Rehabilitation') ||
+        a.title.contains('Pain')
+      ).take(6 - topArticles.length);
+      topArticles.addAll(defaultArticles);
+    }
+    
+    return topArticles.isEmpty ? _encyclopediaArticles.take(6).toList() : topArticles;
+  }
+
+  /// Extracts meaningful keywords from search text
+  List<String> _getKeywords(String text) {
+    // Common words to ignore
+    const stopWords = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'};
+    
+    return text
+        .toLowerCase()
+        .split(RegExp(r'[\s,\.;:!\?]+'))
+        .where((word) => word.length > 2 && !stopWords.contains(word))
+        .toSet()
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -253,15 +353,19 @@ class NihEducationLinks extends StatelessWidget {
       ]);
     }
 
-    // Health Topics organized by category
+    // Get filtered/prioritized content based on user context
+    final relevantCategories = _getRelevantCategories();
+    final relevantArticles = _getRelevantArticles();
+
+    // Health Topics organized by category (filtered)
     children.add(
-      Text('Health Topics',
+      Text('Related Health Topics',
           style: context.textStyles.titleSmall?.semiBold
               .withColor(cs.onSurface)),
     );
     children.add(SizedBox(height: AppSpacing.xs));
 
-    for (final category in _categories) {
+    for (final category in relevantCategories) {
       children.add(_CategorySection(
         title: category.title,
         items: category.items,
@@ -270,28 +374,30 @@ class NihEducationLinks extends StatelessWidget {
       children.add(SizedBox(height: AppSpacing.sm));
     }
 
-    // Encyclopedia Articles
-    children.add(SizedBox(height: AppSpacing.sm));
-    children.add(
-      Text('Encyclopedia Articles',
-          style: context.textStyles.titleSmall?.semiBold
-              .withColor(cs.onSurface)),
-    );
-    children.add(SizedBox(height: AppSpacing.xs));
-    children.add(
-      Text(
-        'In-depth articles about specific conditions and treatments',
-        style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
-      ),
-    );
-    children.add(SizedBox(height: AppSpacing.sm));
+    // Encyclopedia Articles (filtered)
+    if (relevantArticles.isNotEmpty) {
+      children.add(SizedBox(height: AppSpacing.sm));
+      children.add(
+        Text('Related Encyclopedia Articles',
+            style: context.textStyles.titleSmall?.semiBold
+                .withColor(cs.onSurface)),
+      );
+      children.add(SizedBox(height: AppSpacing.xs));
+      children.add(
+        Text(
+          'In-depth articles about your condition and milestone',
+          style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
+        ),
+      );
+      children.add(SizedBox(height: AppSpacing.sm));
 
-    for (final article in _encyclopediaArticles) {
-      children.add(_LinkTile(
-        title: article.title,
-        url: article.url,
-        onTap: () => _open(article.url),
-      ));
+      for (final article in relevantArticles) {
+        children.add(_LinkTile(
+          title: article.title,
+          url: article.url,
+          onTap: () => _open(article.url),
+        ));
+      }
     }
 
     // Browse all link

@@ -236,6 +236,7 @@ class MilestoneService {
           'order': m.order,
           'due_date': m.dueDate?.toIso8601String(),
           'completed': m.completed,
+          'help_type': m.helpType,
           'created_at': m.createdAt.toIso8601String(),
           'updated_at': m.updatedAt.toIso8601String(),
         }).toList();

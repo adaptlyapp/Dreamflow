@@ -337,15 +337,16 @@ class HealthService {
     debugPrint('HealthService: Continuous health sync disabled');
   }
 
-  /// Starts periodic background sync (every 5 minutes) while app is active.
+  /// Starts periodic background sync (every 30 seconds) while app is active.
+  /// This provides near-continuous updates from Apple Watch without user action.
   void _startPeriodicSync() {
     _backgroundSyncTimer?.cancel();
-    _backgroundSyncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
-      debugPrint('HealthService: Running periodic sync...');
+    _backgroundSyncTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) async {
       final data = await getTodayHealthData();
       _notifyListeners(data);
     });
-    debugPrint('HealthService: Periodic sync started (every 5 minutes)');
+    debugPrint('HealthService: Continuous sync started (every 30s)');
   }
 
   /// Stops periodic background sync.

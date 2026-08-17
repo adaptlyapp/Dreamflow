@@ -10,5 +10,8 @@
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
 	<array/>
+	<!-- Enables Time Sensitive medication reminder notifications that break through Focus/DND on iOS 15+. -->
+	<key>com.apple.developer.usernotifications.time-sensitive</key>
+	<true/>
 </dict>
 </plist>

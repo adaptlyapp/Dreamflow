@@ -13,6 +13,8 @@ import 'package:go_router/go_router.dart';
 import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/openai/openai_config.dart';
 import 'package:wellspring/widgets/nih_education_links.dart';
+import 'package:wellspring/services/vr_agency_service.dart';
+import 'package:wellspring/models/vr_agency.dart';
 
 class MilestoneEducationPage extends StatefulWidget {
   final String stepTitle;
@@ -69,6 +71,8 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
   bool _usedResourceFallback = false;
   double? _resourceRadiusMiles;
   Map<String, bool> _expandedResourceTypes = {};
+  List<VRAgency> _vrAgencies = [];
+  bool _showVRAgencies = false;
 
   static const List<String> _resourceTypeOrder = ['therapist', 'hospital', 'center', 'service', 'pharmacy'];
 
@@ -116,7 +120,7 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
       'whyItMatters': 'Clear steps and supportive resources make it easier to stay consistent, learn what works for you, and reduce overwhelm.',
       'keyConcepts': keyConcepts,
       'stepByStep': stepByStep,
-      'examples': <String>['“Today I’ll do the 2-minute version.”', '“I’ll set everything out the night before.”'],
+      'examples': <String>['"Today I\'ll do the 2-minute version."', '"I\'ll set everything out the night before."'],
       'pitfalls': <String>['Trying to do too much on a low-energy day.', 'Skipping tracking entirely (harder to learn patterns).'],
       'trackingIdeas': <String>[
         'How hard did it feel? (easy / medium / hard)',
@@ -204,6 +208,109 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
       ..sort((a, b) => a.key.compareTo(b.key));
     ordered.addAll(remaining.map((entry) => entry.key));
     return ordered;
+  }
+
+  /// Builds a smart search query for resources based on milestone context
+  String _buildResourceSearchQuery() {
+    final parts = <String>[];
+    final stepTitle = widget.stepTitle.toLowerCase();
+    final stepDesc = (widget.stepDescription ?? '').toLowerCase();
+    final condition = (widget.conditionName ?? '').toLowerCase();
+
+    // Extract key action verbs and nouns from milestone title
+    final titleWords = stepTitle.split(RegExp(r'\s+'));
+    
+    // Common therapy/service keywords that indicate what type of provider to look for
+    if (stepTitle.contains('physical therapy') || stepTitle.contains('pt ')) {
+      parts.add('physical therapy');
+    } else if (stepTitle.contains('occupational therapy') || stepTitle.contains('ot ')) {
+      parts.add('occupational therapy');
+    } else if (stepTitle.contains('speech') || stepTitle.contains('language')) {
+      parts.add('speech therapy');
+    } else if (stepTitle.contains('driving') || stepTitle.contains('adaptive driving')) {
+      parts.add('driving rehabilitation specialist');
+    } else if (stepTitle.contains('nutrition') || stepTitle.contains('diet') || stepTitle.contains('meal')) {
+      parts.add('nutritionist dietitian');
+    } else if (stepTitle.contains('pain')) {
+      parts.add('pain management clinic');
+    } else if (stepTitle.contains('counseling') || stepTitle.contains('mental health') || stepTitle.contains('anxiety') || stepTitle.contains('depression')) {
+      parts.add('mental health counselor');
+    } else if (stepTitle.contains('support group') || stepTitle.contains('peer support')) {
+      parts.add('support group');
+    } else if (stepTitle.contains('equipment') || stepTitle.contains('supplies') || stepTitle.contains('wheelchair') || stepTitle.contains('adaptive')) {
+      parts.add('durable medical equipment supplier');
+    } else if (stepTitle.contains('medication') || stepTitle.contains('prescription')) {
+      parts.add('pharmacy');
+    } else {
+      // Generic: use condition + therapy
+      if (condition.isNotEmpty) {
+        parts.add(condition);
+      }
+      parts.add('rehabilitation therapy');
+    }
+
+    return parts.join(' ');
+  }
+
+  /// Builds a fallback query when the primary search returns no results
+  String _buildFallbackResourceQuery() {
+    final condition = (widget.conditionName ?? '').toLowerCase();
+    
+    if (condition.contains('stroke')) return 'stroke rehabilitation center';
+    if (condition.contains('spinal cord')) return 'spinal cord injury rehabilitation';
+    if (condition.contains('brain injury') || condition.contains('tbi')) return 'traumatic brain injury rehabilitation';
+    if (condition.contains('cardiac') || condition.contains('heart')) return 'cardiac rehabilitation';
+    if (condition.contains('orthopedic') || condition.contains('joint') || condition.contains('fracture')) return 'orthopedic rehabilitation';
+    if (condition.contains('parkinson')) return 'parkinsons therapy center';
+    if (condition.contains('multiple sclerosis') || condition.contains('ms')) return 'multiple sclerosis clinic';
+    
+    // Generic fallback
+    return condition.isNotEmpty ? '$condition specialist' : 'physical therapy rehabilitation';
+  }
+
+  /// Detects if this milestone is vocational/employment-related OR disability/driving-related
+  /// (VR agencies help with employment, adaptive technology, driving modifications, etc.)
+  bool _isVocationalMilestone() {
+    final titleLower = widget.stepTitle.toLowerCase();
+    final descLower = (widget.stepDescription ?? '').toLowerCase();
+    final conditionLower = (widget.conditionName ?? '').toLowerCase();
+    final combined = '$titleLower $descLower $conditionLower';
+
+    final vocationalKeywords = [
+      // Employment-related
+      'work', 'job', 'employment', 'career', 'vocational', 'voc rehab',
+      'return to work', 'workplace', 'training', 'education', 'college',
+      'certification', 'resume', 'interview', 'self-employed',
+      'business', 'telecommute', 'remote work', 'tuition', 'degree',
+      
+      // Disability-related (VR provides assistive tech, modifications, etc.)
+      'disability', 'disabled', 'handicap', 'accommodation', 'accessible',
+      'accessibility', 'adaptive equipment', 'adaptive technology',
+      'assistive technology', 'assistive device', 'workstation',
+      'modification', 'adapted', 'independent living',
+      
+      // Driving-related (VR helps with adaptive driving equipment & training)
+      'driving', 'drive', 'driver', 'vehicle', 'car', 'transport',
+      'adaptive driving', 'driving assessment', 'hand controls',
+      'vehicle modification', 'drivers license', 'dmv',
+    ];
+
+    return vocationalKeywords.any((keyword) => combined.contains(keyword));
+  }
+
+  /// Determines if we should prioritize blind services (vs general VR)
+  bool _shouldPrioritizeBlindServices() {
+    final conditionLower = (widget.conditionName ?? '').toLowerCase();
+    final titleLower = widget.stepTitle.toLowerCase();
+    final descLower = (widget.stepDescription ?? '').toLowerCase();
+    final combined = '$conditionLower $titleLower $descLower';
+
+    final blindKeywords = [
+      'blind', 'vision', 'visually impaired', 'low vision', 'sight',
+      'retina', 'glaucoma', 'macular degeneration', 'eye',
+    ];
+
+    return blindKeywords.any((keyword) => combined.contains(keyword));
   }
 
   Widget _resourceTile(BuildContext context, Resource resource) {
@@ -310,6 +417,8 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
       double? userLat;
       double? userLng;
       String? locationLabel;
+      String? userState;
+      String? userStateAbbr;
       try {
         final prefs = user?.preferences ?? const {};
         final loc = prefs['location'] as Map<String, dynamic>?;
@@ -324,6 +433,9 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
           if (labelCandidate.isNotEmpty) {
             locationLabel = labelCandidate;
           }
+          // Extract state information for VR agencies
+          userState = (loc['state'] ?? '').toString().trim();
+          userStateAbbr = (loc['stateAbbr'] ?? loc['abbr'] ?? '').toString().trim();
         }
       } catch (e) {
         debugPrint('MilestoneEducationPage: location parse failed (ignored): $e');
@@ -339,6 +451,9 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
       }
 
       final resourceService = ResourceService();
+      // Build a smart search query from milestone context
+      final searchQuery = _buildResourceSearchQuery();
+      
       // Use the same searchResources method that Resources screen uses
       // (Google Places → OSM → Nominatim → curated Supabase)
       const baseDistance = 15.0;
@@ -347,10 +462,11 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
       List<Resource> resources = [];
 
       if (userLat != null && userLng != null) {
-        debugPrint('MilestoneEducationPage: querying nearby resources at ($userLat, $userLng) within ${baseDistance}mi');
+        debugPrint('MilestoneEducationPage: querying nearby resources for "$searchQuery" at ($userLat, $userLng) within ${baseDistance}mi');
         try {
           resources = await resourceService
               .searchResources(
+                query: searchQuery,
                 userLat: userLat,
                 userLng: userLng,
                 maxDistance: baseDistance,
@@ -361,13 +477,14 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
           debugPrint('MilestoneEducationPage: searchResources failed: $e\n$st');
         }
 
-        // If nothing within 15 miles, gently expand once (mirrors "fallback" behavior)
-        // so the section rarely appears empty.
+        // If nothing within 15 miles, try a broader query (condition-based or generic therapy)
         if (resources.isEmpty) {
-          debugPrint('MilestoneEducationPage: trying fallback query within 100mi');
+          final fallbackQuery = _buildFallbackResourceQuery();
+          debugPrint('MilestoneEducationPage: trying fallback query "$fallbackQuery" within 100mi');
           try {
             resources = await resourceService
                 .searchResources(
+                  query: fallbackQuery,
                   userLat: userLat,
                   userLng: userLng,
                   maxDistance: 100,
@@ -433,6 +550,45 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
         _aiFallbackReason = e.toString();
       }
 
+      // Load VR agencies if this is a vocational milestone and we have state info
+      List<VRAgency> vrAgencies = [];
+      bool showVR = false;
+      final isVocational = _isVocationalMilestone();
+      debugPrint('MilestoneEducationPage: VR check - isVocational=$isVocational, userState="$userState", userStateAbbr="$userStateAbbr"');
+      if (isVocational) {
+        try {
+          final vrService = VRAgencyService();
+          if (userStateAbbr != null && userStateAbbr.isNotEmpty) {
+            debugPrint('MilestoneEducationPage: Querying VR by state abbr: $userStateAbbr');
+            vrAgencies = await vrService.getAgenciesByState(userStateAbbr);
+          } else if (userState != null && userState.isNotEmpty) {
+            debugPrint('MilestoneEducationPage: Querying VR by state name: $userState');
+            vrAgencies = await vrService.getAgenciesByStateName(userState);
+          } else {
+            debugPrint('MilestoneEducationPage: No state info available for VR query');
+          }
+
+          // Prioritize blind services or general VR based on context
+          if (vrAgencies.isNotEmpty) {
+            final prioritizeBlind = _shouldPrioritizeBlindServices();
+            vrAgencies.sort((a, b) {
+              if (prioritizeBlind) {
+                if (a.isBlindServices && !b.isBlindServices) return -1;
+                if (!a.isBlindServices && b.isBlindServices) return 1;
+              } else {
+                if (a.isGeneralVR && !b.isGeneralVR) return -1;
+                if (!a.isGeneralVR && b.isGeneralVR) return 1;
+              }
+              return 0;
+            });
+            showVR = true;
+            debugPrint('MilestoneEducationPage: Loaded ${vrAgencies.length} VR agencies for state');
+          }
+        } catch (e) {
+          debugPrint('MilestoneEducationPage: VR agency fetch failed (ignored): $e');
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _edu = edu;
@@ -443,6 +599,8 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
         _usedResourceFallback = usedFallbackResult;
         _resourceRadiusMiles = resources.isEmpty ? null : resolvedDistanceMiles;
         _expandedResourceTypes = nextExpanded;
+        _vrAgencies = vrAgencies;
+        _showVRAgencies = showVR;
       });
     } catch (e) {
       debugPrint('Education load error (page): $e');
@@ -458,36 +616,65 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
+      backgroundColor: cs.surface,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text('Learn more'),
+        title: Text('Learn more', style: context.textStyles.titleLarge?.semiBold),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
        body: _loading
           ? const Center(child: CenteredLoadingSkeleton())
-          : ListView(
-              padding: EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.lg),
+          : Stack(
               children: [
-                _Header(stepTitle: widget.stepTitle),
-                SizedBox(height: AppSpacing.md),
-                 if (_aiFallbackReason != null) ...[
+                // Subtle gradient background
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          cs.primary.withValues(alpha: 0.05),
+                          cs.surface,
+                        ],
+                        stops: const [0.0, 0.3],
+                      ),
+                    ),
+                  ),
+                ),
+                ListView(
+                  padding: EdgeInsets.fromLTRB(AppSpacing.lg, kToolbarHeight + AppSpacing.xl, AppSpacing.lg, AppSpacing.lg),
+                  children: [
+                    _Header(stepTitle: widget.stepTitle),
+                    SizedBox(height: AppSpacing.lg),
+                    if (_aiFallbackReason != null) ...[
                    Container(
                      padding: AppSpacing.paddingMd,
-                     margin: EdgeInsets.only(bottom: AppSpacing.md),
+                     margin: EdgeInsets.only(bottom: AppSpacing.lg),
                      decoration: BoxDecoration(
-                       color: cs.surfaceContainerHighest,
-                       borderRadius: BorderRadius.circular(AppRadius.md),
-                       border: Border.all(color: cs.outlineVariant),
+                       color: cs.tertiaryContainer.withValues(alpha: 0.3),
+                       borderRadius: BorderRadius.circular(AppRadius.lg),
+                       border: Border.all(color: cs.tertiary.withValues(alpha: 0.2), width: 1),
                      ),
                      child: Row(
                        crossAxisAlignment: CrossAxisAlignment.start,
                        children: [
-                         Icon(Icons.info_outline, color: cs.onSurfaceVariant),
-                         SizedBox(width: AppSpacing.sm),
+                         Container(
+                           padding: EdgeInsets.all(AppSpacing.xs),
+                           decoration: BoxDecoration(
+                             color: cs.tertiary.withValues(alpha: 0.2),
+                             borderRadius: BorderRadius.circular(AppRadius.sm),
+                           ),
+                           child: Icon(Icons.cloud_off_outlined, color: cs.tertiary, size: 20),
+                         ),
+                         SizedBox(width: AppSpacing.md),
                          Expanded(
                            child: Column(
                              crossAxisAlignment: CrossAxisAlignment.start,
                              children: [
                                Text('AI is unavailable right now', style: context.textStyles.titleSmall?.semiBold),
-                               SizedBox(height: 2),
+                               SizedBox(height: 4),
                                Text('Showing an offline version for now.', style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant)),
                              ],
                            ),
@@ -497,16 +684,28 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
                    ),
                  ],
                 if (_error != null) ...[
-                  Row(children: [
-                    Icon(Icons.error_outline, color: cs.error),
-                    SizedBox(width: AppSpacing.sm),
-                    Expanded(child: Text("Couldn't load educational content. Please try again.", style: context.textStyles.bodyMedium)),
-                  ]),
+                  Container(
+                    padding: AppSpacing.paddingMd,
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      border: Border.all(color: cs.error.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: cs.error),
+                        SizedBox(width: AppSpacing.md),
+                        Expanded(child: Text("Couldn't load educational content. Please try again.", style: context.textStyles.bodyMedium)),
+                      ],
+                    ),
+                  ),
                 ] else ...[
                   ..._buildSections(context),
                 ]
               ],
             ),
+          ],
+        ),
     );
   }
 
@@ -526,80 +725,331 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
 
     if ((summary ?? '').isNotEmpty) {
       result.addAll([
-        Text('Overview', style: context.textStyles.titleMedium?.semiBold),
-        SizedBox(height: AppSpacing.xs),
-        Text(summary!, style: context.textStyles.bodyMedium),
-        SizedBox(height: AppSpacing.md),
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.auto_stories_rounded, color: cs.primary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Overview', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              Text(summary!, style: context.textStyles.bodyMedium?.copyWith(height: 1.5)),
+            ],
+          ),
+        ),
+        SizedBox(height: AppSpacing.lg),
       ]);
     }
 
     if ((why ?? '').isNotEmpty) {
       result.addAll([
-        _SectionHeader(icon: Icons.favorite, label: 'Why this matters'),
-        Text(why!, style: context.textStyles.bodyMedium),
-        SizedBox(height: AppSpacing.md),
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.tertiaryContainer.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: cs.tertiary.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.tertiary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.favorite_rounded, color: cs.tertiary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Why this matters', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              Text(why!, style: context.textStyles.bodyMedium?.copyWith(height: 1.5)),
+            ],
+          ),
+        ),
+        SizedBox(height: AppSpacing.lg),
       ]);
     }
 
     if (keyConcepts.isNotEmpty) {
-      result.add(_SectionHeader(icon: Icons.lightbulb, label: 'Key concepts'));
-      result.addAll(keyConcepts.map((e) => _Bullet(text: e)));
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.lightbulb_rounded, color: cs.secondary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Key concepts', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              ...keyConcepts.map((e) => _Bullet(text: e)),
+            ],
+          ),
+        ),
+      );
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     if (stepByStep.isNotEmpty) {
-      result.add(_SectionHeader(icon: Icons.checklist, label: 'Step-by-step'));
-      result.addAll(stepByStep.map((m) => _StepTile(title: (m['title'] ?? '').toString(), detail: (m['detail'] ?? '').toString())));
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.md),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.format_list_numbered_rounded, color: cs.primary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Step-by-step', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+            ),
+            ...stepByStep.asMap().entries.map((entry) => _StepTile(
+              number: entry.key + 1,
+              title: (entry.value['title'] ?? '').toString(),
+              detail: (entry.value['detail'] ?? '').toString(),
+            )),
+          ],
+        ),
+      );
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     if (examples.isNotEmpty) {
-      result.add(_SectionHeader(icon: Icons.task_alt, label: 'Examples'));
-      result.addAll(examples.map((e) => _Bullet(text: e)));
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.chat_bubble_outline_rounded, color: cs.secondary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Examples', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              ...examples.map((e) => _ExampleBubble(text: e)),
+            ],
+          ),
+        ),
+      );
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     if (pitfalls.isNotEmpty) {
-      result.add(_SectionHeader(icon: Icons.report_problem, label: 'Common pitfalls'));
-      result.addAll(pitfalls.map((e) => _Bullet(text: e)));
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.errorContainer.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: cs.error.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.error.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.warning_rounded, color: cs.error, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Common pitfalls', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              ...pitfalls.map((e) => _Bullet(text: e)),
+            ],
+          ),
+        ),
+      );
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     if (trackingIdeas.isNotEmpty) {
-      result.add(_SectionHeader(icon: Icons.show_chart, label: 'How to track'));
-      result.addAll(trackingIdeas.map((e) => _Bullet(text: e)));
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.insights_rounded, color: cs.tertiary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('How to track', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              ...trackingIdeas.map((e) => _Bullet(text: e)),
+            ],
+          ),
+        ),
+      );
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     if (queries.isNotEmpty) {
       result.addAll([
-        _SectionHeader(icon: Icons.search, label: 'Research further'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: queries.map((q) => ActionChip(
-            label: Text(q),
-            avatar: Icon(Icons.open_in_new, size: 16),
-            onPressed: () async {
-              // Track research click achievement
-              final user = context.read<UserProvider>().currentUser;
-              if (user != null) {
-                UserService().trackResearchClick(user.id);
-              }
-              final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(q)}');
-              if (await canLaunchUrl(url)) {
-                await launchUrl(url, mode: LaunchMode.externalApplication);
-              }
-            },
-          )).toList(),
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.search_rounded, color: cs.primary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Research further', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: queries.map((q) => ActionChip(
+                  label: Text(q, style: context.textStyles.labelMedium),
+                  avatar: Icon(Icons.open_in_new, size: 16, color: cs.primary),
+                  backgroundColor: cs.primaryContainer.withValues(alpha: 0.5),
+                  side: BorderSide(color: cs.primary.withValues(alpha: 0.3)),
+                  onPressed: () async {
+                    // Track research click achievement
+                    final user = context.read<UserProvider>().currentUser;
+                    if (user != null) {
+                      UserService().trackResearchClick(user.id);
+                    }
+                    final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(q)}');
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                )).toList(),
+              ),
+            ],
+          ),
         ),
-        SizedBox(height: AppSpacing.md),
+        SizedBox(height: AppSpacing.lg),
       ]);
+    }
+
+    // Vocational Rehabilitation section
+    if (_showVRAgencies && _vrAgencies.isNotEmpty) {
+      result.add(_buildVRAgencySection(context));
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     final hasNearby = _nearbyByType.values.any((items) => items.isNotEmpty);
     if (hasNearby) {
-      result.add(_SectionHeader(icon: Icons.place, label: _usedLocation ? 'Nearby support' : 'Helpful resources'));
+      result.add(
+        Padding(
+          padding: EdgeInsets.only(bottom: AppSpacing.md),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(AppSpacing.xs),
+                decoration: BoxDecoration(
+                  color: cs.secondaryContainer,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Icon(Icons.location_on_rounded, color: cs.secondary, size: 18),
+              ),
+              SizedBox(width: AppSpacing.sm),
+              Text(_usedLocation ? 'Nearby support' : 'Helpful resources', style: context.textStyles.titleMedium?.semiBold),
+            ],
+          ),
+        ),
+      );
       if (_usedLocation && (_locationLabel?.trim().isNotEmpty ?? false)) {
         final radius = _resourceRadiusMiles ?? 15.0;
         result.add(Text('Within ~${_radiusLabel(radius)} miles of ${_locationLabel!}', style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant)));
@@ -639,100 +1089,468 @@ class _MilestoneEducationPageState extends State<MilestoneEducationPage> {
       }
 
       result.add(
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              debugPrint('[MilestoneEducationPage] Explore locations tapped');
-              context.go('/resources?tab=explore');
-            },
-            icon: Icon(Icons.travel_explore, color: cs.primary),
-            label: Text('Explore locations', style: context.textStyles.labelLarge?.withColor(cs.primary)),
+        Padding(
+          padding: EdgeInsets.only(top: AppSpacing.md),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: () {
+                debugPrint('[MilestoneEducationPage] Explore locations tapped');
+                context.go('/resources?tab=explore');
+              },
+              icon: Icon(Icons.travel_explore, color: cs.primary),
+              label: Text('Explore all locations', style: context.textStyles.labelLarge?.withColor(cs.primary)),
+            ),
           ),
         ),
       );
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(SizedBox(height: AppSpacing.lg));
     } else if (_usedLocation) {
-      result.add(_SectionHeader(icon: Icons.place, label: 'Nearby support'));
-      result.add(Text('We couldn\'t find matching providers near ${_locationLabel ?? 'your saved location'} yet. Try broadening your goal or updating your location.',
-          style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant)));
-      result.add(SizedBox(height: AppSpacing.sm));
       result.add(
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              debugPrint('[MilestoneEducationPage] Explore locations tapped');
-              context.go('/resources?tab=explore');
-            },
-            icon: Icon(Icons.travel_explore, color: cs.primary),
-            label: Text('Explore locations', style: context.textStyles.labelLarge?.withColor(cs.primary)),
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.search_off_rounded, color: cs.secondary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Nearby support', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              Text('We couldn\'t find matching providers near ${_locationLabel ?? 'your saved location'} yet. Try broadening your goal or updating your location.',
+                  style: context.textStyles.bodyMedium?.copyWith(height: 1.5)),
+              SizedBox(height: AppSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: () {
+                    debugPrint('[MilestoneEducationPage] Explore locations tapped');
+                    context.go('/resources?tab=explore');
+                  },
+                  icon: Icon(Icons.travel_explore, color: cs.primary),
+                  label: Text('Explore all locations', style: context.textStyles.labelLarge?.withColor(cs.primary)),
+                ),
+              ),
+            ],
           ),
         ),
       );
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(SizedBox(height: AppSpacing.lg));
     } else {
-      result.add(_SectionHeader(icon: Icons.place, label: 'Helpful resources'));
-      result.add(Text('Add your location in Account Settings > Profile to surface nearby therapists, resources, and hospitals.',
-          style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant)));
-      result.add(SizedBox(height: AppSpacing.sm));
       result.add(
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              debugPrint('[MilestoneEducationPage] Explore locations tapped');
-              context.go('/resources?tab=explore');
-            },
-            icon: Icon(Icons.travel_explore, color: cs.primary),
-            label: Text('Explore locations', style: context.textStyles.labelLarge?.withColor(cs.primary)),
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.location_searching_rounded, color: cs.secondary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Helpful resources', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              Text('Add your location in Account Settings > Profile to surface nearby therapists, resources, and hospitals.',
+                  style: context.textStyles.bodyMedium?.copyWith(height: 1.5)),
+              SizedBox(height: AppSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: () {
+                    debugPrint('[MilestoneEducationPage] Explore locations tapped');
+                    context.go('/resources?tab=explore');
+                  },
+                  icon: Icon(Icons.travel_explore, color: cs.primary),
+                  label: Text('Explore all locations', style: context.textStyles.labelLarge?.withColor(cs.primary)),
+                ),
+              ),
+            ],
           ),
         ),
       );
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     if (productQueries.isNotEmpty) {
-      result.add(_SectionHeader(icon: Icons.shopping_bag, label: 'Helpful products'));
-      result.add(Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: productQueries.map((q) {
-          return ActionChip(
-            label: Text(q),
-            avatar: const Icon(Icons.open_in_new, size: 16),
-            onPressed: () async {
-              final url = CommerceService().amazonSearchUrl(q);
-              if (await canLaunchUrl(url)) {
-                await launchUrl(url, mode: LaunchMode.externalApplication);
-              }
-            },
-          );
-        }).toList(),
-      ));
-      result.add(SizedBox(height: AppSpacing.md));
+      result.add(
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingLg,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.shopping_bag_rounded, color: cs.tertiary, size: 18),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('Helpful products', style: context.textStyles.titleMedium?.semiBold),
+                ],
+              ),
+              SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: productQueries.map((q) {
+                  return ActionChip(
+                    label: Text(q, style: context.textStyles.labelMedium),
+                    avatar: Icon(Icons.open_in_new, size: 16, color: cs.tertiary),
+                    backgroundColor: cs.tertiaryContainer.withValues(alpha: 0.5),
+                    side: BorderSide(color: cs.tertiary.withValues(alpha: 0.3)),
+                    onPressed: () async {
+                      final url = CommerceService().amazonSearchUrl(q);
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      );
+      result.add(SizedBox(height: AppSpacing.lg));
     }
 
     // Trusted NIH / MedlinePlus education library — always available.
-    result.add(_SectionHeader(icon: Icons.school_rounded, label: 'Trusted health library'));
-    result.add(NihEducationLinks(
-      conditionName: widget.conditionName,
-      milestoneTitle: widget.stepTitle,
-      milestoneDescription: widget.stepDescription,
-      showHeader: false,
-    ));
-    result.add(SizedBox(height: AppSpacing.md));
+    result.add(
+      Container(
+        width: double.infinity,
+        padding: AppSpacing.paddingLg,
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(AppSpacing.xs),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Icon(Icons.local_library_rounded, color: cs.primary, size: 18),
+                ),
+                SizedBox(width: AppSpacing.sm),
+                Text('Trusted health library', style: context.textStyles.titleMedium?.semiBold),
+              ],
+            ),
+            SizedBox(height: AppSpacing.md),
+            NihEducationLinks(
+              conditionName: widget.conditionName,
+              milestoneTitle: widget.stepTitle,
+              milestoneDescription: widget.stepDescription,
+              showHeader: false,
+            ),
+          ],
+        ),
+      ),
+    );
+    result.add(SizedBox(height: AppSpacing.lg));
 
     if ((disclaimer ?? '').isNotEmpty) {
       result.add(
-        Padding(
-          padding: AppSpacing.paddingSm,
-          child: Text(disclaimer!, style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant)),
+        Container(
+          width: double.infinity,
+          padding: AppSpacing.paddingMd,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, size: 16, color: cs.onSurfaceVariant),
+              SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(disclaimer!, style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant).copyWith(height: 1.4)),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return result;
+  }
+
+  Widget _buildVRAgencySection(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    
+    return Container(
+      width: double.infinity,
+      padding: AppSpacing.paddingLg,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.secondaryContainer.withValues(alpha: 0.6),
+            cs.tertiaryContainer.withValues(alpha: 0.4),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: cs.secondary.withValues(alpha: 0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: cs.secondary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Icon(Icons.work_rounded, color: cs.secondary, size: 24),
+              ),
+              SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Vocational Rehabilitation',
+                      style: context.textStyles.titleMedium?.semiBold,
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Government-funded program to help you prepare for, obtain, or advance in employment',
+                      style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: AppSpacing.md),
+          Container(
+            padding: AppSpacing.paddingMd,
+            decoration: BoxDecoration(
+              color: cs.surface.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Voc Rehab may pay for or help coordinate:',
+                  style: context.textStyles.labelLarge?.semiBold,
+                ),
+                SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    'College tuition',
+                    'Job training',
+                    'Assistive technology',
+                    'Vehicle modifications',
+                    'Career counseling',
+                    'Workplace accommodations',
+                  ].map((item) => Chip(
+                    label: Text(item, style: context.textStyles.labelSmall),
+                    backgroundColor: cs.secondaryContainer.withValues(alpha: 0.6),
+                    side: BorderSide.none,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  )).toList(),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: AppSpacing.md),
+          Text(
+            'Your ${_vrAgencies.length > 1 ? 'state VR offices' : 'state VR office'}:',
+            style: context.textStyles.titleSmall?.semiBold,
+          ),
+          SizedBox(height: AppSpacing.sm),
+          ..._vrAgencies.map((agency) => _buildVRAgencyTile(context, agency)),
+          SizedBox(height: AppSpacing.sm),
+          Container(
+            padding: AppSpacing.paddingMd,
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 18, color: cs.primary),
+                SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Eligibility usually requires: (1) documented disability, (2) the disability creates an employment barrier, and (3) VR services would help you reach a realistic employment goal.',
+                    style: context.textStyles.labelSmall?.withColor(cs.onSurfaceVariant).copyWith(height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVRAgencyTile(BuildContext context, VRAgency agency) {
+    final cs = Theme.of(context).colorScheme;
+    
+    return Container(
+      margin: EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: AppSpacing.paddingMd,
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      agency.agencyName,
+                      style: context.textStyles.titleSmall?.semiBold,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 4),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: agency.isBlindServices 
+                            ? cs.tertiaryContainer.withValues(alpha: 0.6)
+                            : cs.secondaryContainer.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                      child: Text(
+                        agency.agencyTypeLabel,
+                        style: context.textStyles.labelSmall?.semiBold.withColor(
+                          agency.isBlindServices ? cs.tertiary : cs.secondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (agency.primaryPhone != null) ...[
+            SizedBox(height: AppSpacing.sm),
+            InkWell(
+              onTap: () async {
+                final phone = agency.primaryPhone!;
+                final url = Uri.parse('tel:${phone.replaceAll(RegExp(r'[^\d+]'), '')}');
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url);
+                }
+              },
+              child: Row(
+                children: [
+                  Icon(Icons.phone_rounded, size: 16, color: cs.primary),
+                  SizedBox(width: AppSpacing.xs),
+                  Text(
+                    agency.primaryPhone!,
+                    style: context.textStyles.bodyMedium?.withColor(cs.primary),
+                  ),
+                  if (agency.tollFree != null && agency.tollFree!.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(left: 6),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(AppRadius.xs),
+                        ),
+                        child: Text(
+                          'Toll-free',
+                          style: context.textStyles.labelSmall?.withColor(cs.primary),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          if (agency.website != null && agency.website!.isNotEmpty) ...[
+            SizedBox(height: AppSpacing.sm),
+            InkWell(
+              onTap: () async {
+                final url = Uri.parse(agency.website!);
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: Row(
+                children: [
+                  Icon(Icons.language_rounded, size: 16, color: cs.primary),
+                  SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: Text(
+                      'Visit website',
+                      style: context.textStyles.bodyMedium?.withColor(cs.primary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(Icons.open_in_new, size: 14, color: cs.primary),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -757,42 +1575,58 @@ class _ResourceGroupSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      margin: EdgeInsets.only(bottom: AppSpacing.sm),
+      margin: EdgeInsets.only(bottom: AppSpacing.md),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         children: [
           InkWell(
             onTap: onToggle,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
             child: Padding(
-              padding: AppSpacing.paddingSm,
+              padding: AppSpacing.paddingMd,
               child: Row(
                 children: [
-                  Icon(icon, color: cs.primary),
-                  SizedBox(width: AppSpacing.sm),
+                  Container(
+                    padding: EdgeInsets.all(AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(icon, color: cs.secondary, size: 20),
+                  ),
+                  SizedBox(width: AppSpacing.md),
                   Expanded(child: Text(label, style: context.textStyles.titleSmall?.semiBold)),
-                  Icon(expanded ? Icons.expand_less : Icons.expand_more, color: cs.onSurfaceVariant),
+                  Container(
+                    padding: EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Text('${resources.length}', style: context.textStyles.labelSmall?.semiBold.withColor(cs.secondary)),
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Icon(expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: cs.onSurfaceVariant),
                 ],
               ),
             ),
           ),
-          ClipRect(
-            child: AnimatedCrossFade(
-              crossFadeState: expanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-              duration: const Duration(milliseconds: 220),
-              sizeCurve: Curves.easeInOut,
-              firstChild: Column(
-                children: [
-                  const Divider(height: 1),
-                  ..._buildResourceTiles(context),
-                  SizedBox(height: AppSpacing.sm),
-                ],
-              ),
-              secondChild: const SizedBox.shrink(),
+          AnimatedCrossFade(
+            crossFadeState: expanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+            duration: const Duration(milliseconds: 250),
+            sizeCurve: Curves.easeInOutCubic,
+            firstCurve: Curves.easeInOutCubic,
+            secondCurve: Curves.easeInOutCubic,
+            firstChild: Column(
+              children: [
+                Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.5)),
+                ..._buildResourceTiles(context),
+              ],
             ),
+            secondChild: const SizedBox.shrink(),
           ),
         ],
       ),
@@ -800,16 +1634,21 @@ class _ResourceGroupSection extends StatelessWidget {
   }
 
   List<Widget> _buildResourceTiles(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final tiles = <Widget>[];
     for (var i = 0; i < resources.length; i++) {
       tiles.add(Padding(
-        padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+        padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
         child: itemBuilder(context, resources[i]),
       ));
       if (i != resources.length - 1) {
-        tiles.add(const Divider(height: 1));
+        tiles.add(Padding(
+          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.3)),
+        ));
       }
     }
+    tiles.add(SizedBox(height: AppSpacing.sm));
     return tiles;
   }
 }
@@ -823,22 +1662,39 @@ class _Header extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      padding: AppSpacing.paddingMd,
+      padding: AppSpacing.paddingLg,
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [cs.primary.withValues(alpha: 0.12), cs.tertiary.withValues(alpha: 0.12)]),
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primaryContainer.withValues(alpha: 0.8),
+            cs.tertiaryContainer.withValues(alpha: 0.6),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: cs.primary.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.school, color: cs.primary),
-          SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              stepTitle,
-              style: context.textStyles.titleMedium?.semiBold,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+          Container(
+            padding: EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
+            child: Icon(Icons.school_rounded, color: cs.primary, size: 28),
+          ),
+          SizedBox(height: AppSpacing.md),
+          Text(
+            stepTitle,
+            style: context.textStyles.headlineSmall?.semiBold,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -875,26 +1731,32 @@ class _Bullet extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.only(top: 6),
-            child: Icon(Icons.circle, size: 6, color: cs.onSurfaceVariant),
+            padding: EdgeInsets.only(top: 8),
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: cs.primary,
+                shape: BoxShape.circle,
+              ),
+            ),
           ),
-          SizedBox(width: AppSpacing.sm),
-          Expanded(child: Text(text, style: context.textStyles.bodyMedium)),
+          SizedBox(width: AppSpacing.md),
+          Expanded(child: Text(text, style: context.textStyles.bodyMedium?.copyWith(height: 1.5))),
         ],
       ),
     );
   }
 }
 
-class _StepTile extends StatelessWidget {
-  final String title;
-  final String detail;
-  const _StepTile({required this.title, required this.detail});
+class _ExampleBubble extends StatelessWidget {
+  final String text;
+  const _ExampleBubble({required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -903,15 +1765,77 @@ class _StepTile extends StatelessWidget {
       margin: EdgeInsets.only(bottom: AppSpacing.sm),
       padding: AppSpacing.paddingMd,
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
+        color: cs.secondaryContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: cs.secondary.withValues(alpha: 0.2)),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: context.textStyles.titleSmall?.semiBold),
-          SizedBox(height: 4),
-          Text(detail, style: context.textStyles.bodyMedium),
+          Icon(Icons.format_quote, color: cs.secondary, size: 20),
+          SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: context.textStyles.bodyMedium?.copyWith(
+                height: 1.5,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepTile extends StatelessWidget {
+  final int number;
+  final String title;
+  final String detail;
+  const _StepTile({required this.number, required this.title, required this.detail});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: EdgeInsets.only(bottom: AppSpacing.md),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            margin: EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Center(
+              child: Text(
+                '$number',
+                style: context.textStyles.titleLarge?.semiBold.withColor(cs.primary),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(0, AppSpacing.md, AppSpacing.md, AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: context.textStyles.titleSmall?.semiBold),
+                  SizedBox(height: 6),
+                  Text(detail, style: context.textStyles.bodyMedium?.copyWith(height: 1.5)),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

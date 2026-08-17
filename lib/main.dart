@@ -135,7 +135,15 @@ void main() async {
   try {
     await NotificationService.instance.init();
     // Permission prompt is OS-level; if denied the user can re-enable in Settings.
-    unawaited(NotificationService.instance.requestPermission());
+    unawaited(NotificationService.instance.requestPermission().then((granted) {
+      if (granted) {
+        // Schedule the always-on daily re-engagement reminders that push users
+        // back into the app (morning + evening). Safe to call repeatedly; the
+        // service cancels stale ids first.
+        unawaited(NotificationService.instance
+            .scheduleDailyEngagementReminders());
+      }
+    }));
   } catch (e) {
     debugPrint('NotificationService init error: $e');
   }

@@ -66,7 +66,6 @@ class PlanTimelineService {
       return await attempt(conditionId);
     } on PostgrestException catch (e) {
       if (e.code == '22P02' && normalized != conditionId) {
-        debugPrint('PlanTimelineService: retrying with normalized condition id');
         return attempt(normalized);
       }
       rethrow;
@@ -342,6 +341,7 @@ class PlanTimelineService {
       dueDate: m.dueDate,
       completed: m.completed,
       order: m.order,
+      helpType: m.helpType,
       createdAt: m.createdAt,
       updatedAt: DateTime.now(),
     );

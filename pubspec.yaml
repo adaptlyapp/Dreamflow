@@ -7,6 +7,7 @@ environment:
   sdk: ^3.6.0
 
 dependencies:
+  flutter_timezone: ^5.0.0
   timezone: ^0.10.1
   flutter_local_notifications: ^20.0.0
   concentric_transition: ^1.0.0

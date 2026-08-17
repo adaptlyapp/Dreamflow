@@ -575,7 +575,6 @@ class UserService {
         final age = DateTime.now().difference(_cachedAt!);
         final roleMatches = lastActiveRole == null || _cachedUser!.role.value == lastActiveRole;
         if (age.inSeconds < 30 && roleMatches) {
-          debugPrint('UserService.getCurrentUser: Using cache (role=${_cachedUser!.role.value})');
           return _cachedUser;
         }
         if (!roleMatches) {
