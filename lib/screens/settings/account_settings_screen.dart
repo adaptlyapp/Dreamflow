@@ -75,10 +75,41 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       final user = await _userService.getCurrentUser();
       final conditions = await _conditionService.getAllConditions();
       
+      // CRITICAL FIX: Ensure patient code is generated for patient users if missing
+      if (user != null && 
+          user.role == app_user.UserRole.patient && 
+          (user.patientCode == null || user.patientCode!.isEmpty)) {
+        debugPrint('AccountSettings: Patient code missing, generating now...');
+        
+        // Try to get hospital/organization from preferences
+        final hospitalId = user.preferences['hospitalId'] as String?;
+        final organizationId = user.preferences['organizationId'] as String?;
+        
+        if (hospitalId != null || organizationId != null) {
+          try {
+            final generatedCode = await _userService.ensurePatientCodeForCurrentUser(
+              hospitalId: hospitalId,
+              organizationId: organizationId,
+            );
+            debugPrint('AccountSettings: Generated patient code: $generatedCode');
+            
+            // Reload user to get the updated patient code
+            final updatedUser = await _userService.getCurrentUser();
+            if (updatedUser != null) {
+              setState(() => _user = updatedUser);
+            }
+          } catch (e) {
+            debugPrint('AccountSettings: Failed to generate patient code: $e');
+          }
+        } else {
+          debugPrint('AccountSettings: Cannot generate patient code - no hospital/organization set');
+        }
+      }
+      
       if (!mounted) return;
       
       setState(() {
-        _user = user;
+        if (_user == null) _user = user;
         _allConditions = conditions;
         
         // Load profile data

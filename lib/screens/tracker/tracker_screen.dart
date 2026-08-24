@@ -259,18 +259,8 @@ class _TrackerScreenState extends State<TrackerScreen>
   Widget build(BuildContext context) {
     super.build(context);
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background image
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          // Content
-          SafeArea(
+    return GlassyScaffold(
+      body: SafeArea(
             child: DefaultTabController(
               length: 2,
               child: Column(
@@ -431,8 +421,6 @@ class _TrackerScreenState extends State<TrackerScreen>
               ),
             ),
           ),
-        ],
-      ),
     );
   }
 

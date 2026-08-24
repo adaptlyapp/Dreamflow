@@ -514,7 +514,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 child: TextButton.icon(
-                  onPressed: () => context.go('/auth'),
+                  onPressed: () async {
+                    // Sign out first to avoid redirect loop
+                    try {
+                      await SupabaseConfig.auth.signOut();
+                    } catch (e) {
+                      debugPrint('[Welcome] Sign out error: $e');
+                    }
+                    if (context.mounted) {
+                      context.go('/auth');
+                    }
+                  },
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
                   label: const Text('Back to sign in', style: TextStyle(color: Colors.white)),
                   style: TextButton.styleFrom(

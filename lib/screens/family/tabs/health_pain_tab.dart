@@ -281,28 +281,32 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: context.textStyles.labelMedium),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              value,
-              style: context.textStyles.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            if (subtitle.isNotEmpty) ...[
-              const SizedBox(height: 4),
+      child: SizedBox(
+        height: 120,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(label, style: context.textStyles.labelMedium),
+              const SizedBox(height: AppSpacing.sm),
               Text(
-                subtitle,
-                style: context.textStyles.labelSmall?.copyWith(color: color),
+                value,
+                style: context.textStyles.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
+              if (subtitle.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: context.textStyles.labelSmall?.copyWith(color: color),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

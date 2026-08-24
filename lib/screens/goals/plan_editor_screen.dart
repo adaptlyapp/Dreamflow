@@ -19,6 +19,7 @@ import 'package:wellspring/services/post_service.dart';
 import 'package:wellspring/services/plan_timeline_service.dart';
 import 'package:wellspring/theme.dart';
 import 'package:wellspring/openai/openai_config.dart';
+import 'package:wellspring/supabase/supabase_config.dart';
 // import removed: milestone_education_sheet.dart (switched to full-page)
 import 'package:wellspring/screens/goals/milestone_education_page.dart';
 import 'package:wellspring/widgets/plan_share_sheet.dart';
@@ -33,7 +34,8 @@ import 'package:wellspring/screens/main_navigation.dart';
 class PlanEditorScreen extends StatefulWidget {
 final String conditionId;
 final String conditionName;
-const PlanEditorScreen({super.key, required this.conditionId, required this.conditionName});
+final String? initialQuestion;
+const PlanEditorScreen({super.key, required this.conditionId, required this.conditionName, this.initialQuestion});
 
 @override
 State<PlanEditorScreen> createState() => _PlanEditorScreenState();
@@ -69,13 +71,17 @@ bool _pendingSnapshotSync = false;
 String _breakdownGoalSummary = '';
 String _breakdownComplexity = '';
 List<Map<String, String>> _breakdownCategories = const [];
+// Initial question context from Ask ARIE
+String _initialQuestionContext = '';
 
 @override
 void initState() {
-super.initState();
-_selectedConditionId = widget.conditionId;
-_selectedConditionName = widget.conditionName;
-_ensureUserThenLoad();
+  super.initState();
+  _selectedConditionId = widget.conditionId;
+  _selectedConditionName = widget.conditionName;
+  _initialQuestionContext = widget.initialQuestion ?? '';
+  debugPrint('[PlanEditor] initState: initialQuestion="${widget.initialQuestion}", _initialQuestionContext="$_initialQuestionContext"');
+  _ensureUserThenLoad();
 }
 
 Future<void> _ensureUserThenLoad() async {
@@ -101,8 +107,10 @@ await _load();
 
 Future<void> _load() async {
 bool timelineError = false;
-final userId = context.read<UserProvider>().currentUser?.id;
-if (userId == null) {
+// Use auth user ID for plan_timelines (references auth.users), not patient profile ID
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+final patientProfileId = context.read<UserProvider>().currentUser?.id;
+if (authUserId == null || patientProfileId == null) {
 debugPrint('[PlanEditor] No user available; skipping milestones load');
 if (!mounted) return;
 setState(() => _loading = false);
@@ -111,7 +119,7 @@ return;
 final conditionId = _selectedConditionId ?? widget.conditionId;
 List<Milestone> list = [];
 try {
-list = await _service.list(userId: userId, conditionId: conditionId);
+list = await _service.list(userId: authUserId, conditionId: conditionId);
 } catch (e, st) {
 debugPrint('[PlanEditor] Milestones load failed: $e');
 debugPrintStack(stackTrace: st);
@@ -119,7 +127,7 @@ debugPrintStack(stackTrace: st);
 
 List<PlanTimeline> timelines = [];
 try {
-timelines = await _timelineService.list(userId: userId, conditionId: conditionId);
+timelines = await _timelineService.list(userId: authUserId, conditionId: conditionId);
 } catch (e, st) {
 timelineError = true;
 debugPrint('[PlanEditor] Timeline load failed: $e');
@@ -137,7 +145,7 @@ break;
 if (timelines.isEmpty) {
 try {
 final created = await _timelineService.createFromMilestones(
-userId: userId,
+userId: authUserId,
 conditionId: conditionId,
 conditionName: _selectedConditionName,
 name: 'Current plan',
@@ -156,11 +164,11 @@ current = timelines.first;
 try {
 await _timelineService.setCurrentAndActivate(
 timeline: current,
-userId: userId,
+userId: authUserId,
 conditionId: conditionId,
 replaceActivePlan: false,
 );
-timelines = await _timelineService.list(userId: userId, conditionId: conditionId);
+timelines = await _timelineService.list(userId: authUserId, conditionId: conditionId);
 for (final t in timelines) {
 if (t.isCurrent) {
 current = t;
@@ -187,7 +195,7 @@ if (_pendingSnapshotSync && current != null && !timelineError) {
 try {
 await _timelineService.updateSnapshot(
 timelineId: current.id,
-userId: userId,
+userId: authUserId,
 conditionId: conditionId,
 milestones: _items,
 );
@@ -199,7 +207,15 @@ _pendingSnapshotSync = false;
 if (timelineError && mounted) {
 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plan timelines unavailable. Please apply the timeline migration or try again.')));
 }
-// AI temporarily disabled: no prefetch.
+
+// Auto-open generate modal if coming from Ask ARIE with a question
+if (mounted && _initialQuestionContext.isNotEmpty) {
+WidgetsBinding.instance.addPostFrameCallback((_) {
+if (mounted) {
+_generateWithAI();
+}
+});
+}
 }
 
 Future<void> _addOrEdit({Milestone? existing}) async {
@@ -217,6 +233,7 @@ shape: RoundedRectangleBorder(
 borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
 ),
 builder: (ctx) {
+return StatefulBuilder(builder: (ctx, setModalState) {
 return SafeArea(
 top: false,
 child: SingleChildScrollView(
@@ -259,7 +276,7 @@ lastDate: now.add(const Duration(days: 365)),
 initialDate: due ?? now.add(const Duration(days: 7)),
 );
 if (picked != null) {
-setState(() => due = picked);
+setModalState(() => due = picked);
 }
 },
 icon: Icon(Icons.event, color: Theme.of(context).colorScheme.primary),
@@ -267,7 +284,7 @@ label: Text(due == null ? 'Pick due date' : 'Due ${MaterialLocalizations.of(ctx)
 ),
 SizedBox(height: AppSpacing.sm),
 Row(children: [
-Checkbox(value: completed, onChanged: (v) => setState(() => completed = v ?? false)),
+Checkbox(value: completed, onChanged: (v) => setModalState(() => completed = v ?? false)),
 const Text('Completed'),
 ])
 ],
@@ -286,7 +303,7 @@ lastDate: now.add(const Duration(days: 365)),
 initialDate: due ?? now.add(const Duration(days: 7)),
 );
 if (picked != null) {
-setState(() => due = picked);
+setModalState(() => due = picked);
 }
 },
 icon: Icon(Icons.event, color: Theme.of(context).colorScheme.primary),
@@ -295,7 +312,7 @@ label: Text(due == null ? 'Pick due date' : 'Due ${MaterialLocalizations.of(ctx)
 ),
 SizedBox(width: AppSpacing.sm),
 Row(children: [
-Checkbox(value: completed, onChanged: (v) => setState(() => completed = v ?? false)),
+Checkbox(value: completed, onChanged: (v) => setModalState(() => completed = v ?? false)),
 const Text('Completed'),
 ])
 ],
@@ -305,13 +322,13 @@ const Text('Completed'),
 SizedBox(height: AppSpacing.md),
 FilledButton(
 onPressed: () async {
-final userId = context.read<UserProvider>().currentUser?.id;
-if (userId == null) return;
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) return;
 final now = DateTime.now();
 final m = existing == null
 ? Milestone(
 id: const Uuid().v4(),
-userId: userId,
+userId: authUserId,
 conditionId: _selectedConditionId ?? widget.conditionId,
 title: titleCtrl.text.trim(),
 description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
@@ -341,6 +358,7 @@ child: Text(existing == null ? 'Add' : 'Save'),
 ),
 ),
 );
+});
 },
 );
 }
@@ -446,14 +464,14 @@ final item = list.removeAt(oldIndex);
 list.insert(newIndex, item);
 setState(() => _items = list);
 // persist new order
-final userId = context.read<UserProvider>().currentUser?.id;
-if (userId == null) {
-debugPrint('[PlanEditor] reorder: missing userId');
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) {
+debugPrint('[PlanEditor] reorder: missing authUserId');
 return;
 }
 for (int i = 0; i < list.length; i++) {
 if (list[i].order != i) {
-await _service.updateFields(userId, list[i].id, {'order': i});
+await _service.updateFields(authUserId, list[i].id, {'order': i});
 }
 }
 _pendingSnapshotSync = true;
@@ -464,7 +482,8 @@ _sessionSavedToCloud = true;
 
 Future<void> _generateWithAI() async {
 debugPrint('🟢🟢🟢 _generateWithAI() called - opening bottom sheet 🟢🟢🟢');
-final descCtrl = TextEditingController();
+debugPrint('[PlanEditor] _generateWithAI: _initialQuestionContext="$_initialQuestionContext"');
+final descCtrl = TextEditingController(text: _initialQuestionContext);
 int count = 5;
 String durationUnit = 'weeks'; // 'weeks' | 'days'
 final durationCtrl = TextEditingController(text: '8');
@@ -472,8 +491,10 @@ await showModalBottomSheet(
 context: context,
 isScrollControlled: true,
 showDragHandle: true,
+isDismissible: true,
+enableDrag: true,
 builder: (ctx) {
-return StatefulBuilder(builder: (ctx, setLocal) {
+return StatefulBuilder(builder: (sheetCtx, setLocal) {
 int durationValue() {
 final v = int.tryParse(durationCtrl.text.trim());
 if (v == null) return durationUnit == 'days' ? 30 : 8;
@@ -486,7 +507,12 @@ final value = durationValue();
 return durationUnit == 'days' ? value : (value * 7);
 }
 
-return SafeArea(
+return GestureDetector(
+onTap: () {
+// Dismiss keyboard when tapping outside text fields
+FocusScope.of(ctx).unfocus();
+},
+child: SafeArea(
 top: false,
 child: SingleChildScrollView(
 padding: EdgeInsets.fromLTRB(
@@ -498,8 +524,56 @@ MediaQuery.of(ctx).viewInsets.bottom + AppSpacing.lg,
 child: Column(
 crossAxisAlignment: CrossAxisAlignment.start,
 children: [
+Row(
+mainAxisAlignment: MainAxisAlignment.spaceBetween,
+children: [
 Text('Generate a plan', style: ctx.textStyles.titleMedium?.semiBold),
+IconButton(
+onPressed: () => Navigator.of(ctx).pop(),
+icon: Icon(Icons.close, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+padding: EdgeInsets.zero,
+constraints: const BoxConstraints(),
+),
+],
+),
+SizedBox(height: AppSpacing.md),
+Container(
+padding: const EdgeInsets.all(AppSpacing.md),
+decoration: BoxDecoration(
+color: Colors.blue.withValues(alpha: 0.1),
+borderRadius: BorderRadius.circular(8),
+),
+child: Column(
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+Text(
+'How to build a plan:',
+style: ctx.textStyles.labelMedium?.semiBold,
+),
 SizedBox(height: AppSpacing.sm),
+Text(
+'1. Describe your goal or specific constraints (e.g., "improve arm strength for daily activities" or "manage fatigue and pain")',
+style: sheetCtx.textStyles.bodySmall,
+),
+SizedBox(height: AppSpacing.xs),
+Text(
+'2. Set a realistic timeframe (weeks or days) for your recovery goal',
+style: sheetCtx.textStyles.bodySmall,
+),
+SizedBox(height: AppSpacing.xs),
+Text(
+'3. Choose the number of steps/milestones to break down your goal (3–8 recommended)',
+style: sheetCtx.textStyles.bodySmall,
+),
+SizedBox(height: AppSpacing.xs),
+Text(
+'4. A.R.I.E will generate a customized timeline with specific, achievable milestones',
+style: sheetCtx.textStyles.bodySmall,
+),
+],
+),
+),
+SizedBox(height: AppSpacing.md),
 TextField(
 controller: descCtrl,
 decoration: InputDecoration(
@@ -512,8 +586,11 @@ SizedBox(height: AppSpacing.sm),
 LayoutBuilder(
 builder: (context, constraints) {
 final isNarrow = constraints.maxWidth < 420;
-final durationRow = Row(children: [
+if (isNarrow) {
+return Column(children: [
+Row(children: [
 Expanded(
+flex: 1,
 child: DropdownButtonFormField<String>(
 value: durationUnit,
 items: const [
@@ -532,6 +609,7 @@ decoration: const InputDecoration(labelText: 'Duration unit'),
 ),
 SizedBox(width: AppSpacing.sm),
 Expanded(
+flex: 2,
 child: TextFormField(
 controller: durationCtrl,
 keyboardType: TextInputType.number,
@@ -543,10 +621,7 @@ helperText: durationUnit == 'days' ? '1–365' : '1–104',
 onChanged: (_) => setLocal(() {}),
 ),
 ),
-]);
-if (isNarrow) {
-return Column(children: [
-durationRow,
+]),
 SizedBox(height: AppSpacing.sm),
 DropdownButtonFormField<int>(
 value: count,
@@ -559,9 +634,41 @@ decoration: const InputDecoration(labelText: 'Steps'),
 ]);
 }
 return Row(children: [
-Expanded(child: durationRow),
+Expanded(
+flex: 1,
+child: DropdownButtonFormField<String>(
+value: durationUnit,
+items: const [
+DropdownMenuItem(value: 'weeks', child: Text('Weeks')),
+DropdownMenuItem(value: 'days', child: Text('Days')),
+],
+onChanged: (v) {
+final next = v ?? 'weeks';
+setLocal(() {
+durationUnit = next;
+durationCtrl.text = next == 'days' ? '30' : '8';
+});
+},
+decoration: const InputDecoration(labelText: 'Duration unit'),
+),
+),
 SizedBox(width: AppSpacing.sm),
 Expanded(
+flex: 1,
+child: TextFormField(
+controller: durationCtrl,
+keyboardType: TextInputType.number,
+inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+decoration: InputDecoration(
+labelText: durationUnit == 'days' ? 'Duration (days)' : 'Duration (weeks)',
+helperText: durationUnit == 'days' ? '1–365' : '1–104',
+),
+onChanged: (_) => setLocal(() {}),
+),
+),
+SizedBox(width: AppSpacing.sm),
+Expanded(
+flex: 1,
 child: DropdownButtonFormField<int>(
 value: count,
 items: [3, 4, 5, 6, 7, 8]
@@ -642,7 +749,7 @@ _breakdownCategories = cats;
 }
 debugPrint('✅✅✅ [PlanEditor] AI plan generated: ${plan.length} items · summary="${_breakdownGoalSummary}" · complexity=${_breakdownComplexity} · categories=${cats.map((c) => c['type']).toList()}');
 for (final item in plan) {
-debugPrint('   - ${item['title']} (helpType: ${item['helpType']})');
+debugPrint(' - ${item['title']} (helpType: ${item['helpType']})');
 }
 } catch (e) {
 debugPrint('[PlanEditor] AI generate failed; using offline plan: $e');
@@ -661,21 +768,12 @@ if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: 
 }
 } catch (e) {
 debugPrint('[PlanEditor] Generate plan error: $e');
-if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not generate plan. Please try again.')));
+if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not generate plan.')));
 } finally {
-// Always close the sheet if it is still open to avoid "Please wait…" getting stuck
-try {
-if (mounted) {
-// Best-effort close in case an exception occurred before the earlier pop
-Navigator.of(ctx).maybePop();
-}
-} catch (_) {}
-// If the sheet is still mounted (not popped), ensure we reset UI state.
 try {
 setLocal(() => _generating = false);
 } catch (_) {
 if (mounted) {
-// Sheet likely closed; ensure parent state is clean.
 setState(() => _generating = false);
 }
 }
@@ -687,16 +785,19 @@ width: 16,
 height: 16,
 child: const InlineLoadingDot(),
 )
-: Icon(Icons.auto_awesome, color: Theme.of(context).colorScheme.onPrimary),
+: Icon(Icons.auto_awesome, color: Theme.of(sheetCtx).colorScheme.onPrimary),
 label: Text(_generating ? 'Please wait…' : 'Generate Plan'),
 ),
 ],
+),
 ),
 ),
 );
 });
 },
 );
+descCtrl.dispose();
+durationCtrl.dispose();
 }
 
 List<Map<String, dynamic>> _quickPlan({
@@ -809,19 +910,10 @@ return date;
 /// Returns true if the plan was saved to Firestore, false if shown as a
 /// local draft (session-only).
 Future<bool> _saveGeneratedPlan(List<Map<String, dynamic>> plan, {required int durationDays}) async {
-String? userId = context.read<UserProvider>().currentUser?.id;
-if (userId == null) {
-// Attempt to load the user once here to avoid silent no-ops
-debugPrint('[PlanEditor] User missing before save; attempting to load');
-try {
-await context.read<UserProvider>().loadUser();
-userId = context.read<UserProvider>().currentUser?.id;
-} catch (e) {
-debugPrint('[PlanEditor] Failed to load user for save: $e');
-}
-}
-if (userId == null) {
-debugPrint('[PlanEditor] Aborting save: still no user');
+// Use auth user ID for milestones and timelines (both reference auth.users)
+String? authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) {
+debugPrint('[PlanEditor] Aborting save: no auth user');
 if (mounted) {
 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to save your plan.')));
 }
@@ -882,7 +974,7 @@ debugPrint('🔶 [PlanEditor] Creating milestone ${i+1}/${normalized.length}: "$
 newItems.add(
 Milestone(
 id: const Uuid().v4(),
-userId: userId,
+userId: authUserId,
 conditionId: _selectedConditionId ?? widget.conditionId,
 title: (p['title'] ?? 'Milestone ${i + 1}').toString(),
 description: (p['description'] ?? '').toString().isEmpty ? null : (p['description'] ?? '').toString(),
@@ -898,9 +990,14 @@ debugPrint('[PlanEditor] ✓ Milestone ${i+1} added to newItems (total so far: $
 debugPrint('🎉 [PlanEditor] Loop complete! Created ${newItems.length} milestones total');
 // Create a new timeline for the generated plan
 try {
-final timelineName = 'Generated Plan ${DateFormat('MMM d, yyyy').format(now)}';
+final timelineName = _generatePlanName(
+milestoneCount: newItems.length,
+durationDays: durationDays,
+goalSummary: _breakdownGoalSummary.isNotEmpty ? _breakdownGoalSummary : null,
+createdAt: now,
+);
 final timeline = await _timelineService.createFromMilestones(
-userId: userId,
+userId: authUserId,
 conditionId: _selectedConditionId ?? widget.conditionId,
 conditionName: _selectedConditionName,
 name: timelineName,
@@ -912,7 +1009,7 @@ debugPrint('[PlanEditor] Created new timeline "$timelineName" with ${newItems.le
 // Activate the timeline and replace the active plan
 await _timelineService.setCurrentAndActivate(
 timeline: timeline,
-userId: userId,
+userId: authUserId,
 conditionId: _selectedConditionId ?? widget.conditionId,
 replaceActivePlan: true,
 );
@@ -1134,8 +1231,8 @@ await _activateTimeline(selected);
 }
 
 Future<void> _saveTimelineFromCurrent() async {
-final userId = context.read<UserProvider>().currentUser?.id;
-if (userId == null) {
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) {
 if (!mounted) return;
 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to save timelines.')));
 return;
@@ -1208,7 +1305,7 @@ return;
 setState(() => _timelineBusy = true);
 try {
 await _timelineService.createFromMilestones(
-userId: userId,
+userId: authUserId,
 conditionId: _selectedConditionId ?? widget.conditionId,
 conditionName: _selectedConditionName,
 name: name,
@@ -1231,8 +1328,8 @@ if (mounted) setState(() => _timelineBusy = false);
 }
 
 Future<void> _activateTimeline(PlanTimeline timeline) async {
-final userId = context.read<UserProvider>().currentUser?.id;
-if (userId == null) {
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) {
 if (!mounted) return;
 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to switch timelines.')));
 return;
@@ -1241,7 +1338,7 @@ setState(() => _timelineBusy = true);
 try {
 await _timelineService.setCurrentAndActivate(
 timeline: timeline,
-userId: userId,
+userId: authUserId,
 conditionId: _selectedConditionId ?? widget.conditionId,
 );
 _pendingSnapshotSync = false;
@@ -1273,8 +1370,8 @@ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keep at
 return;
 }
 
-final userId = context.read<UserProvider>().currentUser?.id;
-if (userId == null) {
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) {
 if (!mounted) return;
 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to manage timelines.')));
 return;
@@ -1300,7 +1397,7 @@ setState(() => _timelineBusy = true);
 try {
 await _timelineService.deleteTimeline(
 timelineId: timeline.id,
-userId: userId,
+userId: authUserId,
 conditionId: _selectedConditionId ?? widget.conditionId,
 );
 await _load();
@@ -1322,11 +1419,51 @@ final base = widget.conditionName.isNotEmpty ? widget.conditionName : 'Plan';
 return '$base timeline ${_timelines.length + 1}';
 }
 
+String _generatePlanName({
+required int milestoneCount,
+required int durationDays,
+required String? goalSummary,
+required DateTime createdAt,
+}) {
+final formatter = DateFormat('MMM d, yyyy');
+final date = formatter.format(createdAt);
+
+// Determine phase name based on duration
+final weeks = (durationDays / 7).round();
+String phase = 'Recovery';
+if (weeks <= 2) {
+phase = 'Kickoff';
+} else if (weeks <= 4) {
+phase = 'Early Recovery';
+} else if (weeks <= 8) {
+phase = 'Core Recovery';
+} else if (weeks <= 12) {
+phase = 'Extended Recovery';
+} else {
+phase = 'Long-term Recovery';
+}
+
+// Build the name with goal summary if available
+if (goalSummary != null && goalSummary.trim().isNotEmpty) {
+final summary = goalSummary.trim();
+// Limit summary to first 30 chars to avoid overly long names
+final truncated = summary.length > 30 ? '${summary.substring(0, 30)}...' : summary;
+return '$phase Plan • $truncated • $date';
+}
+
+// Fallback: use condition name and step count
+final condition = _selectedConditionName.isNotEmpty ? _selectedConditionName : 'Recovery';
+return '$phase Plan • $condition ($milestoneCount steps) • $date';
+}
+
+
 @override
 Widget build(BuildContext context) {
 // Determine the current (first incomplete) milestone index
 final currentIndex = _items.indexWhere((m) => !m.completed);
 return Scaffold(
+backgroundColor: Colors.transparent,
+extendBodyBehindAppBar: true,
 appBar: AppBar(
 centerTitle: true,
 automaticallyImplyLeading: false,
@@ -1372,10 +1509,24 @@ tooltip: 'Add milestone',
 ),
 ],
 ),
-body: _loading
+body: Stack(
+fit: StackFit.expand,
+children: [
+const ThemedBackgroundImage(),
+SafeArea(
+top: false,
+child: _loading
 ? const Center(child: CenteredLoadingSkeleton())
 : _items.isEmpty
-? _EmptyState(onGenerate: _generateWithAI, onAdd: () => _addOrEdit())
+? _EmptyState(
+onGenerate: _generateWithAI,
+onAdd: () => _addOrEdit(),
+current: _currentTimeline,
+timelines: _timelines,
+busy: _timelineBusy,
+onSwitch: _openTimelineSwitcher,
+onSave: _saveTimelineFromCurrent,
+)
 : CustomScrollView(
 slivers: [
 SliverToBoxAdapter(
@@ -1459,25 +1610,50 @@ collapsed: collapsed,
 isRerolling: _rerollingId == m.id,
 onToggleExpand: collapsed ? () => setState(() => _expandedFuture.add(m.id)) : null,
 onToggle: () async {
-final uid = context.read<UserProvider>().currentUser?.id;
-if (uid == null) return;
-await _service.updateFields(uid, m.id, {'completed': !m.completed});
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) return;
+await _service.updateFields(authUserId, m.id, {'completed': !m.completed});
 _pendingSnapshotSync = true;
 if (mounted) await _load();
 },
 onEdit: () => _addOrEdit(existing: m),
 onDelete: () async {
-final uid = context.read<UserProvider>().currentUser?.id;
-if (uid == null) return;
-await _service.delete(uid, m.id);
+final authUserId = SupabaseConfig.auth.currentUser?.id;
+if (authUserId == null) return;
+await _service.delete(authUserId, m.id);
 _pendingSnapshotSync = true;
 if (mounted) await _load();
+
+// Auto-delete timeline if it has 0 milestones
+if (mounted && _currentTimeline != null) {
+if (_items.isEmpty) {
+try {
+debugPrint('[PlanEditor] Auto-deleting empty timeline: \\${_currentTimeline!.name}');
+await _timelineService.deleteTimeline(
+timelineId: _currentTimeline!.id,
+userId: authUserId,
+conditionId: _selectedConditionId ?? widget.conditionId,
+);
+if (mounted) {
+await _load();
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(content: Text('Deleted "\\${_currentTimeline?.name}" (no steps left)')),
+);
+}
+} catch (e) {
+debugPrint('[PlanEditor] Auto-delete timeline failed: $e');
+}
+}
+}
 },
 onLearnMore: () => _showEducationFor(m),
 onReroll: () => _reroll(m),
 ),
 );
 },
+),
+],
+),
 ),
 ],
 ),
@@ -1708,20 +1884,20 @@ letterSpacing: 0.5,
 ),
 ),
 if ((milestone.helpType ?? '').isNotEmpty)
-  Padding(
-    padding: EdgeInsets.only(bottom: AppSpacing.xs),
-    child: HelpTypeChip(helpType: milestone.helpType!),
-  ),
+Padding(
+padding: EdgeInsets.only(bottom: AppSpacing.xs),
+child: HelpTypeChip(helpType: milestone.helpType!),
+),
 Text(
-  milestone.title,
-  style: context.textStyles.titleMedium?.copyWith(
-    decoration: TextDecoration.none,
-    color: milestone.completed
-        ? cs.onSurfaceVariant.withValues(alpha: 0.7)
-        : cs.onSurface,
-    fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w600,
-    height: 1.3,
-  ),
+milestone.title,
+style: context.textStyles.titleMedium?.copyWith(
+decoration: TextDecoration.none,
+color: milestone.completed
+? cs.onSurfaceVariant.withValues(alpha: 0.7)
+: cs.onSurface,
+fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w600,
+height: 1.3,
+),
 ),
 ],
 ),
@@ -1781,17 +1957,17 @@ padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
 ),
 ),
 if ((milestone.helpType ?? '').isNotEmpty) ...[
-  SizedBox(height: AppSpacing.sm),
-  SizedBox(
-    width: double.infinity,
-    child: HelpTypeActionButton(
-      helpType: milestone.helpType,
-      milestoneTitle: milestone.title,
-      milestoneDescription: milestone.description,
-      onLearn: onLearnMore,
-      outlined: false,
-    ),
-  ),
+SizedBox(height: AppSpacing.sm),
+SizedBox(
+width: double.infinity,
+child: HelpTypeActionButton(
+helpType: milestone.helpType,
+milestoneTitle: milestone.title,
+milestoneDescription: milestone.description,
+onLearn: onLearnMore,
+outlined: false,
+),
+),
 ],
 SizedBox(height: AppSpacing.sm),
 Row(
@@ -2039,24 +2215,54 @@ label: Text(label, style: context.textStyles.labelLarge?.withColor(color)),
 class _EmptyState extends StatelessWidget {
 final VoidCallback onGenerate;
 final VoidCallback onAdd;
-const _EmptyState({required this.onGenerate, required this.onAdd});
+final PlanTimeline? current;
+final List<PlanTimeline> timelines;
+final bool busy;
+final VoidCallback onSwitch;
+final VoidCallback onSave;
+
+const _EmptyState({
+required this.onGenerate,
+required this.onAdd,
+required this.current,
+required this.timelines,
+required this.busy,
+required this.onSwitch,
+required this.onSave,
+});
 
 @override
 Widget build(BuildContext context) {
 final cs = Theme.of(context).colorScheme;
-return Padding(
+return SingleChildScrollView(
+child: Padding(
 padding: AppSpacing.paddingLg,
 child: Column(
-mainAxisAlignment: MainAxisAlignment.center,
 children: [
+// Show timeline selector only if there are manually saved timelines (exclude auto-created "Current plan")
+if (timelines.where((t) => t.name != 'Current plan').isNotEmpty)
+Padding(
+padding: EdgeInsets.only(bottom: AppSpacing.lg),
+child: _TimelineSelector(
+current: current,
+timelines: timelines.where((t) => t.name != 'Current plan').toList(),
+busy: busy,
+onSwitch: onSwitch,
+onSave: onSave,
+),
+),
 SizedBox(height: AppSpacing.xl),
 Icon(Icons.timeline, size: 56, color: cs.onSurfaceVariant),
 SizedBox(height: AppSpacing.md),
 Text('No milestones yet', style: context.textStyles.titleLarge?.semiBold),
 SizedBox(height: AppSpacing.xs),
-Text('Describe your goal and generate a quick plan, or add steps manually.',
+Text(
+timelines.where((t) => t.name != 'Current plan').isNotEmpty
+? 'Switch to a saved timeline or create a new plan.'
+: 'Describe your goal and generate a quick plan, or add steps manually.',
 textAlign: TextAlign.center,
-style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant)),
+style: context.textStyles.bodyMedium?.withColor(cs.onSurfaceVariant),
+),
 SizedBox(height: AppSpacing.lg),
 FilledButton.icon(
 onPressed: onGenerate,
@@ -2070,6 +2276,8 @@ icon: Icon(Icons.add_task, color: cs.primary),
 label: const Text('Add milestone'),
 )
 ],
+mainAxisAlignment: MainAxisAlignment.center,
+),
 ),
 );
 }
@@ -2184,7 +2392,7 @@ color: cs.primary.withValues(alpha: 0.3),
 ),
 ),
 child: Text(
-savedCount > 1 ? '$savedCount saved timelines' : '3 saved timelines',
+' $savedCount saved timeline${savedCount == 1 ? '' : 's'}',
 style: context.textStyles.labelSmall?.copyWith(
 color: cs.primary,
 fontWeight: FontWeight.w600,

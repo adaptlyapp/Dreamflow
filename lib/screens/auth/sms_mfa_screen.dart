@@ -9,8 +9,6 @@ import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/theme.dart';
-import 'package:wellspring/widgets/animated_blobs.dart';
-import 'package:wellspring/widgets/brand_logo.dart';
 import 'package:wellspring/widgets/skeletons.dart';
 
 class SmsMfaScreen extends StatefulWidget {
@@ -108,9 +106,11 @@ class _SmsMfaScreenState extends State<SmsMfaScreen> {
 
   Future<void> _completeAndGo() async {
     // Capture navigation target BEFORE async operations
-    final from = mounted ? GoRouterState.of(context).uri.queryParameters['from'] : null;
-    final target = (from != null && from.isNotEmpty) ? Uri.decodeComponent(from) : '/';
-    
+    final from =
+        mounted ? GoRouterState.of(context).uri.queryParameters['from'] : null;
+    final target =
+        (from != null && from.isNotEmpty) ? Uri.decodeComponent(from) : '/';
+
     if (mounted) {
       await context.read<UserProvider>().loadUser();
     }
@@ -175,7 +175,6 @@ class _SmsMfaScreenState extends State<SmsMfaScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -210,218 +209,205 @@ class _SmsMfaScreenState extends State<SmsMfaScreen> {
         ),
         title: const Text('Verify your email'),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const AnimatedBlobs(),
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  AppSpacing.lg + MediaQuery.viewInsetsOf(context).bottom),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.xl),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              color: cs.primary,
-                              borderRadius: BorderRadius.circular(AppRadius.lg),
-                            ),
-                            child: Icon(
-                              Icons.mail_outline,
-                              size: 48,
-                              color: cs.onPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.lg),
-                          Text(
-                            'Protect your account',
-                            style: context.textStyles.headlineSmall?.semiBold,
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(
-                            'Enter the email code to finish signing in.',
-                            style: context.textStyles.bodyMedium?.withColor(
-                              cs.onSurfaceVariant,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: AppSpacing.xl),
-                          if (_error != null) ...[
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(AppSpacing.md),
-                              decoration: BoxDecoration(
-                                color: cs.errorContainer,
-                                borderRadius:
-                                    BorderRadius.circular(AppRadius.md),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Icon(Icons.error_outline,
-                                      color: cs.onErrorContainer),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Expanded(
-                                    child: Text(
-                                      _error!,
-                                      style: context.textStyles.bodyMedium
-                                          ?.withColor(
-                                        cs.onErrorContainer,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                          ],
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(AppSpacing.md),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(AppRadius.md),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.mail_outline, color: cs.primary),
-                                const SizedBox(width: AppSpacing.sm),
-                                Expanded(
-                                  child: Text(
-                                    contactLabel,
-                                    style: context.textStyles.bodyMedium
-                                        ?.withColor(cs.onSurface),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.lg),
-                          Text(
-                            'Check your inbox for a verification code.',
-                            style: context.textStyles.bodyMedium
-                                ?.withColor(cs.onSurfaceVariant),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(
-                            'Codes can expire. If verification fails, request a fresh code and try again.',
-                            style: context.textStyles.bodySmall
-                                ?.withColor(cs.onSurfaceVariant),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: AppSpacing.xl),
-                          if (!_codeSent && _codeController.text.isEmpty) ...[
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                onPressed:
-                                    (_sending || _skipping || isCoolingDown)
-                                        ? null
-                                        : _sendCode,
-                                icon: _sending
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: InlineLoadingDot(),
-                                      )
-                                    : const Icon(Icons.mail_outline),
-                                label:
-                                    Text(_isCoolingDownLabel(isCoolingDown)),
-                              ),
-                            ),
-                          ] else ...[
-                            TextField(
-                              controller: _codeController,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(12),
-                              ],
-                              onChanged: (_) => setState(() {}),
-                              decoration: InputDecoration(
-                                labelText: 'Verification code',
-                                labelStyle: labelStyle,
-                                floatingLabelStyle: labelStyle,
-                                hintText: 'Enter the code',
-                                hintStyle: hintStyle,
-                                prefixIcon: Icon(Icons.verified_outlined,
-                                    color: iconColor),
-                                filled: isLight,
-                                fillColor: fillColor,
-                                border: OutlineInputBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(AppRadius.md),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                              style: context.textStyles.bodyLarge
-                                  ?.withColor(Colors.white),
-                              cursorColor: Colors.white,
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                onPressed:
-                                    (_verifying || _skipping || !canVerify)
-                                        ? null
-                                        : _verify,
-                                icon: _verifying
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: InlineLoadingDot(),
-                                      )
-                                    : Icon(Icons.verified_user_outlined,
-                                        color: cs.onPrimary),
-                                label: Text(
-                                  'Verify & continue',
-                                  style: context.textStyles.labelLarge
-                                      ?.withColor(cs.onPrimary),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed:
-                                    (_sending || _skipping || isCoolingDown)
-                                        ? null
-                                        : _sendCode,
-                                icon: _sending
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: InlineLoadingDot(),
-                                      )
-                                    : const Icon(Icons.mail_outline),
-                                label:
-                                    Text(_isCoolingDownLabel(isCoolingDown)),
-                              ),
-                            ),
-                          ],
-                        ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg + MediaQuery.viewInsetsOf(context).bottom),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xl),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: cs.primary,
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                        ),
+                        child: Icon(
+                          Icons.mail_outline,
+                          size: 48,
+                          color: cs.onPrimary,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        'Protect your account',
+                        style: context.textStyles.headlineSmall?.semiBold,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Enter the email code to finish signing in.',
+                        style: context.textStyles.bodyMedium?.withColor(
+                          cs.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      if (_error != null) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.error_outline,
+                                  color: cs.onErrorContainer),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style:
+                                      context.textStyles.bodyMedium?.withColor(
+                                    cs.onErrorContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.mail_outline, color: cs.primary),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                contactLabel,
+                                style: context.textStyles.bodyMedium
+                                    ?.withColor(cs.onSurface),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        'Check your inbox for a verification code.',
+                        style: context.textStyles.bodyMedium
+                            ?.withColor(cs.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Codes can expire. If verification fails, request a fresh code and try again.',
+                        style: context.textStyles.bodySmall
+                            ?.withColor(cs.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      if (!_codeSent && _codeController.text.isEmpty) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: (_sending || _skipping || isCoolingDown)
+                                ? null
+                                : _sendCode,
+                            icon: _sending
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: InlineLoadingDot(),
+                                  )
+                                : const Icon(Icons.mail_outline),
+                            label: Text(_isCoolingDownLabel(isCoolingDown)),
+                          ),
+                        ),
+                      ] else ...[
+                        TextField(
+                          controller: _codeController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(12),
+                          ],
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: 'Verification code',
+                            labelStyle: labelStyle,
+                            floatingLabelStyle: labelStyle,
+                            hintText: 'Enter the code',
+                            hintStyle: hintStyle,
+                            prefixIcon:
+                                Icon(Icons.verified_outlined, color: iconColor),
+                            filled: isLight,
+                            fillColor: fillColor,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          style: context.textStyles.bodyLarge
+                              ?.withColor(Colors.white),
+                          cursorColor: Color(0xFF000000),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: (_verifying || _skipping || !canVerify)
+                                ? null
+                                : _verify,
+                            icon: _verifying
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: InlineLoadingDot(),
+                                  )
+                                : Icon(Icons.verified_user_outlined,
+                                    color: cs.onPrimary),
+                            label: Text(
+                              'Verify & continue',
+                              style: context.textStyles.labelLarge
+                                  ?.withColor(cs.onPrimary),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: (_sending || _skipping || isCoolingDown)
+                                ? null
+                                : _sendCode,
+                            icon: _sending
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: InlineLoadingDot(),
+                                  )
+                                : const Icon(Icons.mail_outline),
+                            label: Text(_isCoolingDownLabel(isCoolingDown)),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }

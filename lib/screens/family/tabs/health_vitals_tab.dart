@@ -5,9 +5,14 @@ import 'package:wellspring/theme.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class HealthVitalsTab extends StatelessWidget {
-  const HealthVitalsTab({super.key, required this.entries});
+  const HealthVitalsTab({
+    super.key,
+    required this.entries,
+    required this.patientId,
+  });
 
   final List<TrackerEntry> entries;
+  final String patientId;
 
   @override
   Widget build(BuildContext context) {

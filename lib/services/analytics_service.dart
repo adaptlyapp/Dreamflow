@@ -15,14 +15,20 @@ class AnalyticsService {
   Future<void> init() async {
     // Attach Supabase auth listener so we can associate analytics with the current user
     try {
-      SupabaseConfig.auth.onAuthStateChange.listen((data) async {
-        final user = data.session?.user;
-        try {
-          await _analytics.setUserId(id: user?.id);
-        } catch (e) {
-          debugPrint('AnalyticsService.setUserId error: $e');
-        }
-      });
+      SupabaseConfig.auth.onAuthStateChange.listen(
+        (data) async {
+          final user = data.session?.user;
+          try {
+            await _analytics.setUserId(id: user?.id);
+          } catch (e) {
+            debugPrint('AnalyticsService.setUserId error: $e');
+          }
+        },
+        onError: (error) {
+          debugPrint('AnalyticsService auth listener error: $error');
+        },
+        cancelOnError: false,
+      );
     } catch (e) {
       debugPrint('AnalyticsService.init error: $e');
     }

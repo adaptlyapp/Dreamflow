@@ -11,7 +11,6 @@ import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/services/hospital_service.dart';
 import 'package:wellspring/models/hospital.dart';
 import 'package:wellspring/theme.dart';
-import 'package:wellspring/widgets/animated_blobs.dart';
 import 'package:wellspring/models/condition.dart';
 import 'package:wellspring/models/onboarding_prefill.dart';
 
@@ -42,6 +41,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   DateTime? _diagnosisDate;
   final List<String> _selectedInterests = [];
   int _currentStep = 0;
+  bool _isSaving = false;
   // Hospital selection state
   List<Hospital> _hospitals = [];
   String? _selectedHospitalId;
@@ -152,7 +152,9 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
     super.dispose();
   }
 
-  void _nextStep() {
+  Future<void> _nextStep() async {
+    if (_isSaving) return; // Prevent double-submission
+    
     if (_currentStep == 0) {
       // Require hospital selection
       if (_selectedHospitalId == null) {
@@ -183,7 +185,14 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
         );
       }
     } else if (_currentStep == 4) {
-      _completeOnboarding();
+      setState(() => _isSaving = true);
+      try {
+        await _completeOnboarding();
+      } finally {
+        if (mounted) {
+          setState(() => _isSaving = false);
+        }
+      }
     }
   }
 
@@ -194,12 +203,75 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   }
 
   Future<void> _completeOnboarding() async {
-    final authUser = SupabaseConfig.auth.currentUser;
-    final uid = authUser?.id;
-    final email = authUser?.email ?? _emailController.text;
+    // Check if session is still valid
+    var authUser = SupabaseConfig.auth.currentUser;
+    
+    // If no user, try to refresh the session
+    if (authUser == null) {
+      debugPrint('[Questionnaire] No active session, attempting to refresh...');
+      try {
+        await SupabaseConfig.auth.refreshSession();
+        authUser = SupabaseConfig.auth.currentUser;
+        debugPrint('[Questionnaire] Session refreshed successfully');
+      } catch (e) {
+        debugPrint('[Questionnaire] Session refresh failed: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Your session has expired. Please sign in again.'),
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Sign In',
+                onPressed: () async {
+                  try {
+                    await SupabaseConfig.auth.signOut();
+                  } catch (e) {
+                    debugPrint('[Questionnaire] Sign out error: $e');
+                  }
+                  if (context.mounted) {
+                    context.go('/auth');
+                  }
+                },
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
+    
+    // If still no user after refresh, session truly expired
+    if (authUser == null) {
+      debugPrint('[Questionnaire] Session expired, cannot complete onboarding');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Your session has expired. Please sign in again to continue.'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Sign In',
+              onPressed: () async {
+                try {
+                  await SupabaseConfig.auth.signOut();
+                } catch (e) {
+                  debugPrint('[Questionnaire] Sign out error: $e');
+                }
+                if (context.mounted) {
+                  context.go('/auth');
+                }
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final uid = authUser.id;
+    final email = authUser.email ?? _emailController.text;
 
     final user = User(
-      id: uid ?? 'unknown',
+      id: uid,
       name: _nameController.text,
       email: email,
       onboardingCompleted: true,
@@ -213,7 +285,20 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       updatedAt: DateTime.now(),
     );
 
-    await _userService.completeOnboarding(user);
+    try {
+      await _userService.completeOnboarding(user);
+    } catch (e) {
+      debugPrint('[Questionnaire] Error completing onboarding: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving your profile: $e'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      return;
+    }
     // If a hospital was chosen, generate a patient code tied to it
     if (_selectedHospitalId != null && _selectedHospitalId!.isNotEmpty) {
       try {
@@ -283,12 +368,8 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
           ),
         ],
       ),
-      body: Stack(
-        fit: StackFit.expand,
+      body: Column(
         children: [
-          const AnimatedBlobs(),
-          Column(
-            children: [
               // Progress bar with stable CanvasKit-friendly implementation
               SafeArea(
                 bottom: false,
@@ -361,17 +442,26 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                                     ),
                                   const Spacer(),
                                   FilledButton(
-                                    onPressed: _nextStep,
+                                    onPressed: _isSaving ? null : _nextStep,
                                     style: FilledButton.styleFrom(
                                       padding: AppSpacing.paddingMd,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(AppRadius.md),
                                       ),
                                     ),
-                                    child: Text(
-                                      _currentStep == 4 ? 'Complete' : 'Continue',
-                                      style: context.textStyles.titleMedium?.semiBold,
-                                    ),
+                                    child: _isSaving
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                            ),
+                                          )
+                                        : Text(
+                                            _currentStep == 4 ? 'Complete' : 'Continue',
+                                            style: context.textStyles.titleMedium?.semiBold,
+                                          ),
                                   ),
                                 ],
                               ),
@@ -383,8 +473,6 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
         ],
       ),
     );

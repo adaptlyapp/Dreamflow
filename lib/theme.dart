@@ -171,7 +171,7 @@ class LightModeColors {
 
   static const lightSurface = Color(0xFFFFFFFF); // Pure white cards
   static const lightOnSurface = Color(0xFF1E293B); // Dark slate for headings
-  static const lightBackground = Color(0xFFF8FAFC); // Light gray background
+  static const lightBackground = Color(0xFFFFFFFF); // Pure white background for light mode
   static const lightSurfaceVariant = Color(0xFFF1F5F9); // Alternate light gray
   static const lightOnSurfaceVariant = Color(0xFF475569); // Slate gray for body text
 
@@ -215,12 +215,12 @@ class DarkModeColors {
   static const darkOnErrorContainer = Color(0xFFFEE2E2);
 
   // Apple glass surfaces (blue-tinted blacks)
-  static const obsidian = Color(0xFF0B0F14); // App background
+  static const obsidian = Color(0xFF0B0F14); // App background (legacy)
   static const slate = Color(0xFF111827); // Cards, sidebars
   static const graphite = Color(0xFF1F2937); // Modals, raised panels
   static const divider = Color(0xFF2A3441); // Borders, separators
 
-  static const darkSurface = obsidian; // App background
+  static const darkSurface = Color(0xFF000000); // Pure black surfaces in dark mode
   static const darkOnSurface = Color(0xFFF9FAFB); // White Ice - headings
   static const darkSurfaceVariant = slate; // Cards
   static const darkOnSurfaceVariant = Color(0xFF9CA3AF); // Soft Gray - body text
@@ -870,9 +870,29 @@ ThemeData get darkTheme => ThemeData(
       ],
     );
 
-/// **Glossy Scaffold** — Adds radial background glow to dark mode
+/// **Themed Background Image Widget** — Displays dark/light mode backgrounds
 /// 
-/// Use this instead of regular Scaffold to get the OLED teal aura effect
+/// Returns the appropriate background image based on current theme
+class ThemedBackgroundImage extends StatelessWidget {
+  const ThemedBackgroundImage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return Positioned.fill(
+      child: Image.asset(
+        isDarkMode
+            ? 'assets/images/ChatGPT_Image_Jul_13_2026_08_13_46_AM.png'
+            : 'assets/images/image-gen-1_6.png',
+        fit: BoxFit.cover,
+      ),
+    );
+  }
+}
+
+/// **Glossy Scaffold** — Adds themed background image to any screen
+/// 
+/// Use this instead of regular Scaffold to get automatic light/dark mode backgrounds
 class GlassyScaffold extends StatelessWidget {
   final PreferredSizeWidget? appBar;
   final Widget? body;
@@ -882,6 +902,8 @@ class GlassyScaffold extends StatelessWidget {
   final Widget? endDrawer;
   final Color? backgroundColor;
   final bool useFamilyBackground;
+  final bool useThemedBackground;
+  final bool? resizeToAvoidBottomInset;
 
   const GlassyScaffold({
     super.key,
@@ -893,63 +915,30 @@ class GlassyScaffold extends StatelessWidget {
     this.endDrawer,
     this.backgroundColor,
     this.useFamilyBackground = false,
+    this.useThemedBackground = true,
+    this.resizeToAvoidBottomInset,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final gradients = Theme.of(context).extension<AppGradients>();
-
-    if (!isDark && !useFamilyBackground) {
-      return Scaffold(
-        appBar: appBar,
-        body: body,
-        floatingActionButton: floatingActionButton,
-        bottomNavigationBar: bottomNavigationBar,
-        drawer: drawer,
-        endDrawer: endDrawer,
-        backgroundColor: backgroundColor,
-      );
-    }
-
-    return Container(
-      decoration: useFamilyBackground
-          ? null
-          : BoxDecoration(gradient: gradients?.backgroundGlow),
-      child: useFamilyBackground
+    return Scaffold(
+      extendBodyBehindAppBar: useThemedBackground && appBar != null,
+      appBar: appBar,
+      body: useThemedBackground
           ? Stack(
+              fit: StackFit.expand,
               children: [
-                // Background Image for Family Portal
-                Positioned.fill(
-                  child: Image.asset(
-                    'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      color: isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
-                    ),
-                  ),
-                ),
-                // Scaffold Content
-                Scaffold(
-                  backgroundColor: Colors.transparent,
-                  appBar: appBar,
-                  body: body,
-                  floatingActionButton: floatingActionButton,
-                  bottomNavigationBar: bottomNavigationBar,
-                  drawer: drawer,
-                  endDrawer: endDrawer,
-                ),
+                const ThemedBackgroundImage(),
+                if (body != null) body!,
               ],
             )
-          : Scaffold(
-              backgroundColor: Colors.transparent,
-              appBar: appBar,
-              body: body,
-              floatingActionButton: floatingActionButton,
-              bottomNavigationBar: bottomNavigationBar,
-              drawer: drawer,
-              endDrawer: endDrawer,
-            ),
+          : body,
+      floatingActionButton: floatingActionButton,
+      bottomNavigationBar: bottomNavigationBar,
+      drawer: drawer,
+      endDrawer: endDrawer,
+      backgroundColor: backgroundColor ?? (useThemedBackground ? Colors.black : null),
+      resizeToAvoidBottomInset: resizeToAvoidBottomInset,
     );
   }
 }

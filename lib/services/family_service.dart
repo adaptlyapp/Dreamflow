@@ -154,63 +154,11 @@ class FamilyService {
       debugPrint('[FamilyService] Connected family member $familyMemberId to patient $patientId');
 
       // CRITICAL FIX: Also save connection to Supabase for persistence across devices/reinstalls
-      try {
-        final authUser = _supabase.auth.currentUser;
-        if (authUser != null) {
-          debugPrint('[FamilyService] Saving connection to Supabase for persistence...');
-          
-          // First, ensure a family_members record exists for this auth user
-          var familyMemberRecord = await _supabase
-              .from('family_members')
-              .select('id')
-              .eq('auth_user_id', authUser.id)
-              .maybeSingle();
-          
-          String dbFamilyMemberId;
-          if (familyMemberRecord == null) {
-            // Create family_members record if it doesn't exist
-            debugPrint('[FamilyService] Creating family_members record for auth_user_id: ${authUser.id}');
-            final insertResult = await _supabase
-                .from('family_members')
-                .insert({
-                  'auth_user_id': authUser.id,
-                  'name': authUser.userMetadata?['name'] ?? authUser.email ?? 'Family Member',
-                  'email': authUser.email,
-                })
-                .select('id')
-                .single();
-            dbFamilyMemberId = insertResult['id'] as String;
-            debugPrint('[FamilyService] ✓ Created family_members record: $dbFamilyMemberId');
-          } else {
-            dbFamilyMemberId = familyMemberRecord['id'] as String;
-            debugPrint('[FamilyService] ✓ Using existing family_members record: $dbFamilyMemberId');
-          }
-          
-          // Now create the patient link in family_patient_links
-          // Check if link already exists first
-          final existingLink = await _supabase
-              .from('family_patient_links')
-              .select('id')
-              .eq('family_member_id', dbFamilyMemberId)
-              .eq('patient_id', patientId)
-              .maybeSingle();
-          
-          if (existingLink == null) {
-            await _supabase
-                .from('family_patient_links')
-                .insert({
-                  'family_member_id': dbFamilyMemberId,
-                  'patient_id': patientId,
-                });
-            debugPrint('[FamilyService] ✓ Created family_patient_links record');
-          } else {
-            debugPrint('[FamilyService] ✓ family_patient_links record already exists');
-          }
-        }
-      } catch (e) {
-        debugPrint('[FamilyService] ⚠️ Failed to save connection to Supabase (non-fatal): $e');
-        // Don't fail the whole operation if Supabase save fails
-      }
+      await _persistLinkToSupabase(
+        patientProfileId: patientId,
+        patientName: patientName,
+        relationship: relationship,
+      );
 
       // Auto-link as viewer on the patient's recovery blueprint (Option 2).
       try {
@@ -295,7 +243,16 @@ class FamilyService {
           return syncedConnections;
         }
         
-        debugPrint('[FamilyService] No connections found in Supabase either');
+        // CLEANUP: Supabase has no links, but we have stale local connections
+        // These are likely from a previous test session or different user
+        // Clear them instead of auto-recovering to avoid unwanted connections
+        if (allConnections.isNotEmpty) {
+          debugPrint('[FamilyService] ⚠️ Supabase has no links but local storage has ${allConnections.length} stale connection(s)');
+          debugPrint('[FamilyService] ✓ Clearing stale local connections (user must manually re-connect via patient code)');
+          await prefs.remove(_connectionsKey);
+        }
+
+        debugPrint('[FamilyService] No valid connections found');
         return [];
       }
       
@@ -331,6 +288,68 @@ class FamilyService {
     }
   }
   
+  /// Persist a family<->patient link to Supabase.
+  /// Safe to retry: no-op if link already exists.
+  Future<void> _persistLinkToSupabase({
+    required String patientProfileId,
+    required String patientName,
+    required String relationship,
+  }) async {
+    try {
+      final authUser = _supabase.auth.currentUser;
+      if (authUser == null) {
+        debugPrint('[FamilyService] ⚠️ _persistLinkToSupabase: no auth user, skipping');
+        return;
+      }
+      debugPrint('[FamilyService] ════════════════════════════════════════');
+      debugPrint('[FamilyService] SAVING CONNECTION TO SUPABASE');
+      debugPrint('[FamilyService] Patient profile ID: $patientProfileId');
+      debugPrint('[FamilyService] Family auth user ID: ${authUser.id}');
+
+      final familyAuthId = authUser.id;
+
+      final patientRow = await _supabase
+          .from('users')
+          .select('auth_user_id, name')
+          .eq('id', patientProfileId)
+          .maybeSingle();
+      var patientAuthId = patientRow?['auth_user_id'] as String?;
+      final resolvedPatientName = (patientRow?['name'] as String?) ?? patientName;
+
+      // FALLBACK: If patient has no auth_user_id yet, use profile id itself.
+      // Some older accounts may not have populated auth_user_id.
+      if (patientAuthId == null) {
+        debugPrint('[FamilyService] ⚠️ Patient has no auth_user_id; using profile id as patient_id fallback');
+        patientAuthId = patientProfileId;
+      }
+
+      final existingLink = await _supabase
+          .from('family_patient_links')
+          .select('id')
+          .eq('family_member_id', familyAuthId)
+          .eq('patient_id', patientAuthId)
+          .maybeSingle();
+
+      if (existingLink == null) {
+        debugPrint('[FamilyService] INSERT INTO family_patient_links:');
+        debugPrint('[FamilyService]   - family_member_id: $familyAuthId');
+        debugPrint('[FamilyService]   - patient_id:       $patientAuthId');
+        await _supabase.from('family_patient_links').insert({
+          'family_member_id': familyAuthId,
+          'patient_id': patientAuthId,
+          'patient_name': resolvedPatientName,
+          'relationship': relationship,
+        });
+        debugPrint('[FamilyService] ✓ Connection saved successfully!');
+      } else {
+        debugPrint('[FamilyService] ✓ Link already exists (id: ${existingLink['id']})');
+      }
+      debugPrint('[FamilyService] ════════════════════════════════════════');
+    } catch (e) {
+      debugPrint('[FamilyService] ⚠️ _persistLinkToSupabase failed (non-fatal): $e');
+    }
+  }
+
   /// Sync patient connections from Supabase (partner web portal) to local storage
   Future<List<PatientConnection>> _syncConnectionsFromSupabase(String familyMemberId) async {
     try {
@@ -343,45 +362,31 @@ class FamilyService {
       debugPrint('[FamilyService] Syncing for familyMemberId (profile ID): $familyMemberId');
       debugPrint('[FamilyService] Auth user ID: ${authUser.id}');
       
-      // CRITICAL FIX: Query the users table directly instead of family_members table
-      // The familyMemberId passed in is the profile ID from users table with role='family'
-      // We need to verify this profile exists and belongs to the current auth user
-      final familyProfile = await _supabase
-          .from('users')
-          .select('id, role')
-          .eq('id', familyMemberId)
-          .eq('auth_user_id', authUser.id)
-          .eq('role', 'family')
-          .maybeSingle();
-      
-      if (familyProfile == null) {
-        debugPrint('[FamilyService] No family profile found for user.id: $familyMemberId');
-        return [];
+      // Best-effort verification of family profile (non-blocking). family_patient_links
+      // is keyed by auth.uid() so we can safely query it even if the family users row
+      // is missing auth_user_id (older accounts). Do not early-return on failure.
+      try {
+        final familyProfile = await _supabase
+            .from('users')
+            .select('id, role')
+            .eq('id', familyMemberId)
+            .eq('role', 'family')
+            .maybeSingle();
+        if (familyProfile == null) {
+          debugPrint('[FamilyService] ⚠️ Family profile not found for user.id: $familyMemberId (continuing anyway)');
+        } else {
+          debugPrint('[FamilyService] ✓ Family profile exists (ID: $familyMemberId, role: ${familyProfile['role']})');
+        }
+      } catch (e) {
+        debugPrint('[FamilyService] ⚠️ Family profile check errored: $e (continuing anyway)');
       }
-      
-      debugPrint('[FamilyService] ✓ Verified family profile exists (ID: $familyMemberId, role: ${familyProfile['role']})');
-      
-      // Now check if there's also a family_members table entry (for web portal compatibility)
-      final familyMemberData = await _supabase
-          .from('family_members')
-          .select('id')
-          .eq('auth_user_id', authUser.id)
-          .maybeSingle();
-      
-      if (familyMemberData == null) {
-        debugPrint('[FamilyService] No family_member record found in family_members table');
-        debugPrint('[FamilyService] This is normal for mobile-only users who never used the web portal');
-        return [];
-      }
-      
-      final dbFamilyMemberId = familyMemberData['id'] as String;
-      debugPrint('[FamilyService] ✓ Found family_member record in family_members table (DB ID: $dbFamilyMemberId)');
-      
-      // Get all patient links from family_patient_links
+
+      // NEW SCHEMA: family_patient_links.family_member_id = auth.users(id).
+      // Query links directly by auth user id.
       final links = await _supabase
           .from('family_patient_links')
           .select('id, patient_id')
-          .eq('family_member_id', dbFamilyMemberId);
+          .eq('family_member_id', authUser.id);
       
       if (links.isEmpty) {
         debugPrint('[FamilyService] No patient links found in family_patient_links');
@@ -399,10 +404,19 @@ class FamilyService {
         try {
           // Get patient details - first try without role filter to see if record exists at all
           debugPrint('[FamilyService] Querying users table for patient (without role filter)...');
-          final patientData = await _supabase
+          // patient_id in links is auth.users(id) normally; look up profile by auth_user_id.
+          // Fallback: if not found, try matching profile id directly (older records).
+          var patientData = await _supabase
+              .from('users')
+              .select('id, name, email, profile_image_url, role')
+              .eq('auth_user_id', patientId)
+              .eq('role', 'patient')
+              .maybeSingle();
+          patientData ??= await _supabase
               .from('users')
               .select('id, name, email, profile_image_url, role')
               .eq('id', patientId)
+              .eq('role', 'patient')
               .maybeSingle();
           
           debugPrint('[FamilyService] Patient query result: ${patientData != null ? "found" : "null"}');
@@ -415,7 +429,7 @@ class FamilyService {
             final connection = PatientConnection(
               id: link['id'] as String,
               familyMemberId: familyMemberId, // CRITICAL: Use the user.id (profile ID) from the users table
-              patientId: patientId,
+              patientId: patientData['id'] as String, // Store the users.id (profile ID), not the auth id
               patientName: patientData['name'] as String? ?? 'Unknown Patient',
               patientProfileImageUrl: patientData['profile_image_url'] as String?,
               relationship: 'Family Member', // Default relationship
@@ -1370,10 +1384,218 @@ class FamilyService {
     }
   }
 
+  /// Get all family members connected to a patient
+  /// [patientId] may be either the users.id profile ID or the auth user ID.
+  Future<List<String>> getFamilyMembersForPatient(String patientId) async {
+    try {
+      // NEW SCHEMA: patient_id in family_patient_links is auth.users(id).
+      // Resolve to auth id if a profile id was passed.
+      String patientAuthId = patientId;
+      try {
+        final row = await _supabase
+            .from('users')
+            .select('auth_user_id')
+            .eq('id', patientId)
+            .maybeSingle();
+        final resolved = row?['auth_user_id'] as String?;
+        if (resolved != null && resolved.isNotEmpty) {
+          patientAuthId = resolved;
+        }
+      } catch (_) {}
+
+      final links = await _supabase
+          .from('family_patient_links')
+          .select('family_member_id')
+          .eq('patient_id', patientAuthId);
+
+      return links.map((link) => link['family_member_id'] as String).toList();
+    } catch (e) {
+      debugPrint('[FamilyService] getFamilyMembersForPatient error: $e');
+      return [];
+    }
+  }
+
+  /// Notify all family members about medication time
+  Future<void> notifyFamilyMedicationTime({
+    required String patientId,
+    required String patientName,
+    required String medicationName,
+    required String dosage,
+  }) async {
+    try {
+      // Only send family notifications if current user is a family member
+      final currentUser = await _userService.getCurrentUser();
+      if (currentUser?.role != UserRole.family) {
+        debugPrint(
+            '[FamilyService] notifyFamilyMedicationTime: Current user is not a family member, skipping notification');
+        return;
+      }
+
+      debugPrint('[FamilyService] Notifying family members about medication time for $patientName');
+      await NotificationService.instance.notifyFamilyMedicationTime(
+        patientName: patientName,
+        medicationName: medicationName,
+        dosage: dosage,
+        patientId: patientId,
+      );
+    } catch (e) {
+      debugPrint('[FamilyService] notifyFamilyMedicationTime error: $e');
+    }
+  }
+
+  /// Notify all family members about new health log entry
+  Future<void> notifyFamilyNewHealthLog({
+    required String patientId,
+    required String patientName,
+    String? logSummary,
+  }) async {
+    try {
+      // Only send family notifications if current user is a family member
+      final currentUser = await _userService.getCurrentUser();
+      if (currentUser?.role != UserRole.family) {
+        debugPrint(
+            '[FamilyService] notifyFamilyNewHealthLog: Current user is not a family member, skipping notification');
+        return;
+      }
+
+      debugPrint('[FamilyService] Notifying family members about new health log for $patientName');
+      await NotificationService.instance.notifyFamilyNewHealthLog(
+        patientName: patientName,
+        patientId: patientId,
+        logSummary: logSummary,
+      );
+    } catch (e) {
+      debugPrint('[FamilyService] notifyFamilyNewHealthLog error: $e');
+    }
+  }
+
+  /// Disconnect a family member from a patient (remove the connection)
+  /// [patientId] - The patient's profile ID
+  /// [familyMemberId] - The family member's profile ID to disconnect
+  Future<bool> disconnectFamilyMember({
+    required String patientId,
+    required String familyMemberId,
+  }) async {
+    try {
+      debugPrint('[FamilyService] ════════════════════════════════════════');
+      debugPrint('[FamilyService] DISCONNECTING FAMILY MEMBER');
+      debugPrint('[FamilyService] Patient profile ID: $patientId');
+      debugPrint('[FamilyService] Family profile ID: $familyMemberId');
+      
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Remove from Supabase
+      final authUser = _supabase.auth.currentUser;
+      if (authUser != null) {
+        // Get patient's auth_user_id
+        final patientRow = await _supabase
+            .from('users')
+            .select('auth_user_id')
+            .eq('id', patientId)
+            .maybeSingle();
+        var patientAuthId = patientRow?['auth_user_id'] as String?;
+        
+        // Fallback to profile ID if auth_user_id not found
+        if (patientAuthId == null) {
+          debugPrint('[FamilyService] ⚠️ Patient has no auth_user_id; using profile id as fallback');
+          patientAuthId = patientId;
+        }
+        
+        // Get family member's auth_user_id (the one stored in family_patient_links)
+        final familyRow = await _supabase
+            .from('users')
+            .select('auth_user_id')
+            .eq('id', familyMemberId)
+            .maybeSingle();
+        var familyAuthId = familyRow?['auth_user_id'] as String?;
+        
+        // Fallback to profile ID if auth_user_id not found
+        if (familyAuthId == null) {
+          debugPrint('[FamilyService] ⚠️ Family member has no auth_user_id; using profile id as fallback');
+          familyAuthId = familyMemberId;
+        }
+        
+        debugPrint('[FamilyService] Deleting from family_patient_links:');
+        debugPrint('[FamilyService]   - patient_id: $patientAuthId');
+        debugPrint('[FamilyService]   - family_member_id: $familyAuthId');
+        
+        // Delete the connection from Supabase
+        await _supabase
+            .from('family_patient_links')
+            .delete()
+            .eq('patient_id', patientAuthId)
+            .eq('family_member_id', familyAuthId);
+        
+        debugPrint('[FamilyService] ✓ Deleted from Supabase');
+      }
+      
+      // Remove from local storage
+      final jsonString = prefs.getString(_connectionsKey);
+      if (jsonString != null && jsonString.isNotEmpty) {
+        final List<dynamic> jsonList = jsonDecode(jsonString);
+        final allConnections = jsonList
+            .map((json) => PatientConnection.fromJson(Map<String, dynamic>.from(json)))
+            .toList();
+        
+        // Filter out the connection to this patient
+        final updatedConnections = allConnections
+            .where((c) => !(c.patientId == patientId && c.familyMemberId == familyMemberId))
+            .toList();
+        
+        debugPrint('[FamilyService] Connections before: ${allConnections.length}');
+        debugPrint('[FamilyService] Connections after: ${updatedConnections.length}');
+        
+        // Save updated connections
+        final jsonListUpdated = updatedConnections.map((c) => c.toJson()).toList();
+        await prefs.setString(_connectionsKey, jsonEncode(jsonListUpdated));
+        debugPrint('[FamilyService] ✓ Updated local storage');
+      }
+      
+      // Remove blueprint viewer access
+      try {
+        final familyAuthId = _supabase.auth.currentUser?.id;
+        if (familyAuthId != null) {
+          final patientRow = await _supabase
+              .from('users')
+              .select('auth_user_id')
+              .eq('id', patientId)
+              .maybeSingle();
+          final patientAuthId = patientRow?['auth_user_id'] as String?;
+          if (patientAuthId != null) {
+            await RecoveryBlueprintService().removeFamilyViewer(
+              patientUserId: patientAuthId,
+              familyAuthId: familyAuthId,
+            );
+            debugPrint('[FamilyService] ✓ Removed blueprint viewer access');
+          }
+        }
+      } catch (e) {
+        debugPrint('[FamilyService] Blueprint viewer removal skipped: $e');
+      }
+      
+      debugPrint('[FamilyService] ✅ Family member disconnected successfully');
+      debugPrint('[FamilyService] ════════════════════════════════════════');
+      return true;
+    } catch (e, stackTrace) {
+      debugPrint('[FamilyService] ❌ disconnectFamilyMember error: $e');
+      debugPrint('[FamilyService] Stack trace: $stackTrace');
+      debugPrint('[FamilyService] ════════════════════════════════════════');
+      return false;
+    }
+  }
+
   /// Check for alerts and send notifications to family members
   /// This should be called periodically (e.g., every hour when app is active)
   Future<void> checkAndNotifyAlerts(String patientId, String patientName) async {
     try {
+      // Only send family alerts if current user is a family member
+      final currentUser = await _userService.getCurrentUser();
+      if (currentUser?.role != UserRole.family) {
+        debugPrint(
+            '[FamilyService] checkAndNotifyAlerts: Current user is not a family member, skipping alerts');
+        return;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final lastCheckKey = '${_lastAlertCheckKey}_$patientId';
       final lastCheck = prefs.getString(lastCheckKey);

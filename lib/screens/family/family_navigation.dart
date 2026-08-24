@@ -108,7 +108,7 @@ class AdaptlyBottomNav extends StatelessWidget {
             tab: FamilyTab.resources,
             selectedTab: selectedTab,
             icon: Icons.folder_outlined,
-            label: 'Resources',
+            label: 'Notes',
             onTap: onTabSelected,
           ),
           _AdaptlyNavItem(

@@ -8,7 +8,7 @@ class RecoveryBlueprintService {
   static const _collectionName = 'recovery_blueprints';
   static const _collaboratorsTable = 'blueprint_collaborators';
 
-  /// Get blueprint for a specific user
+  /// Get blueprint for a specific user (returns most recent if multiple exist)
   Future<RecoveryBlueprint?> getByUserId(String userId) async {
     try {
       debugPrint('RecoveryBlueprintService.getByUserId: Querying for userId=$userId');
@@ -16,14 +16,15 @@ class RecoveryBlueprintService {
           .from(_collectionName)
           .select()
           .eq('user_id', userId)
-          .maybeSingle();
+          .order('created_at', ascending: false)
+          .limit(1);
 
-      if (response == null) {
+      if (response.isEmpty) {
         debugPrint('RecoveryBlueprintService.getByUserId: No blueprint found for userId=$userId');
         return null;
       }
-      debugPrint('RecoveryBlueprintService.getByUserId: Found blueprint ${response['id']}');
-      return RecoveryBlueprint.fromJson(_fromSupabase(response));
+      debugPrint('RecoveryBlueprintService.getByUserId: Found blueprint ${response[0]['id']}');
+      return RecoveryBlueprint.fromJson(_fromSupabase(response[0]));
     } catch (e) {
       debugPrint('RecoveryBlueprintService.getByUserId error: $e');
       return null;
@@ -515,6 +516,33 @@ class RecoveryBlueprintService {
     }
   }
 
+  /// Remove a family member's viewer access from a patient's blueprint.
+  /// [patientUserId] is the patient's `auth_user_id`; [familyAuthId] is the
+  /// family member's `auth_user_id`.
+  Future<void> removeFamilyViewer({
+    required String patientUserId,
+    required String familyAuthId,
+  }) async {
+    try {
+      final bp = await SupabaseConfig.client
+          .from(_collectionName)
+          .select('id')
+          .eq('user_id', patientUserId)
+          .maybeSingle();
+      if (bp == null) {
+        debugPrint('removeFamilyViewer: no blueprint exists for patient $patientUserId');
+        return;
+      }
+      await removeCollaborator(
+        blueprintId: bp['id'] as String,
+        userId: familyAuthId,
+      );
+      debugPrint('removeFamilyViewer: removed $familyAuthId from blueprint ${bp['id']}');
+    } catch (e) {
+      debugPrint('removeFamilyViewer error: $e');
+    }
+  }
+
   /// Realtime subscription to UPDATEs on a single blueprint row.
   /// Returns a [RealtimeChannel]; caller must dispose with `unsubscribe()`.
   RealtimeChannel subscribeToBlueprint({
@@ -546,5 +574,61 @@ class RecoveryBlueprintService {
         )
         .subscribe();
     return channel;
+  }
+
+  /// Clear care team data for a specific user by email
+  Future<void> clearCareTeamByEmail(String email) async {
+    try {
+      debugPrint('RecoveryBlueprintService.clearCareTeamByEmail: Finding user with email=$email');
+      
+      // First, find the user by email
+      final userResponse = await SupabaseConfig.client
+          .from('users')
+          .select('auth_user_id')
+          .eq('email', email)
+          .eq('role', 'patient')
+          .maybeSingle();
+
+      if (userResponse == null) {
+        debugPrint('RecoveryBlueprintService.clearCareTeamByEmail: No user found with email=$email');
+        return;
+      }
+
+      final userId = userResponse['auth_user_id'] as String;
+      debugPrint('RecoveryBlueprintService.clearCareTeamByEmail: Found user with auth_user_id=$userId');
+
+      // Get the blueprint for this user
+      final blueprint = await getByUserId(userId);
+      if (blueprint == null) {
+        debugPrint('RecoveryBlueprintService.clearCareTeamByEmail: No blueprint found for user=$userId');
+        return;
+      }
+
+      debugPrint('RecoveryBlueprintService.clearCareTeamByEmail: Clearing care team from blueprint ${blueprint.id}');
+
+      // Update the blueprint with empty care team
+      final updatedBlueprint = RecoveryBlueprint(
+        id: blueprint.id,
+        userId: blueprint.userId,
+        patientProfile: blueprint.patientProfile,
+        careTeam: const [], // Clear the care team
+        independenceAssessment: blueprint.independenceAssessment,
+        homeReadiness: blueprint.homeReadiness,
+        dailyRoutines: blueprint.dailyRoutines,
+        equipment: blueprint.equipment,
+        supplies: blueprint.supplies,
+        roadmap: blueprint.roadmap,
+        createdAt: blueprint.createdAt,
+        updatedAt: DateTime.now(),
+        updatedBy: blueprint.updatedBy,
+      );
+
+      await update(updatedBlueprint);
+      debugPrint('RecoveryBlueprintService.clearCareTeamByEmail: ✅ Successfully cleared care team for $email');
+    } catch (e, stackTrace) {
+      debugPrint('RecoveryBlueprintService.clearCareTeamByEmail ❌ ERROR: $e');
+      debugPrint('RecoveryBlueprintService.clearCareTeamByEmail Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 }

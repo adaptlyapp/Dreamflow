@@ -5,15 +5,18 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:wellspring/models/recovery_blueprint.dart';
 import 'package:wellspring/models/user.dart';
+import 'package:wellspring/models/medication.dart';
 import 'package:wellspring/providers/user_provider.dart';
-import 'package:wellspring/services/recovery_blueprint_service.dart';
+import 'package:wellspring/services/notification_service.dart';
 import 'package:wellspring/services/tracker_service.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/services/family_service.dart';
+import 'package:wellspring/services/recovery_blueprint_service.dart';
 import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/theme.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+import 'package:uuid/uuid.dart';
+import 'package:wellspring/widgets/daily_care_timeline.dart';
 
 /// Recovery Command Center - Living visual representation of patient's recovery ecosystem
 class RecoveryBlueprintDashboard extends StatefulWidget {
@@ -26,15 +29,14 @@ class RecoveryBlueprintDashboard extends StatefulWidget {
 }
 
 class _RecoveryBlueprintDashboardState extends State<RecoveryBlueprintDashboard> {
-  final _service = RecoveryBlueprintService();
   final _trackerService = TrackerService();
-  RecoveryBlueprint? _blueprint;
+  List<CareTeamMember> _careTeam = [];
+  List<DailyRoutine> _dailyRoutines = [];
+  User? _patient;
   bool _loading = true;
   double _medicationAdherence = 0.0;
   final _calendarScrollController = ScrollController();
-  List<BlueprintCollaborator> _collaborators = [];
-  RealtimeChannel? _channel;
-  String? _liveBannerText;
+  bool _compactMode = false;
 
   @override
   void initState() {
@@ -45,10 +47,6 @@ class _RecoveryBlueprintDashboardState extends State<RecoveryBlueprintDashboard>
   @override
   void dispose() {
     _calendarScrollController.dispose();
-    final ch = _channel;
-    if (ch != null) {
-      SupabaseConfig.client.removeChannel(ch);
-    }
     super.dispose();
   }
 
@@ -60,7 +58,144 @@ class _RecoveryBlueprintDashboardState extends State<RecoveryBlueprintDashboard>
       return;
     }
 
-    final bp = await _service.getByUserId(userId);
+    // Load data directly from family connections and patient medications
+    debugPrint('RecoveryCommandCenter: Loading care team and routines from existing data');
+    
+    final familyService = FamilyService();
+    final blueprintService = RecoveryBlueprintService();
+    final careTeamMembers = <CareTeamMember>[];
+    
+    // Get connected family members for care team
+    if (widget.patientId != null) {
+      // Family member viewing patient's blueprint - add the family member to care team
+      final currentUser = await UserService().getCurrentUser();
+      if (currentUser != null) {
+        careTeamMembers.add(CareTeamMember(
+          id: currentUser.id,
+          name: currentUser.name,
+          relationship: 'family',
+          email: currentUser.email,
+        ));
+      }
+    } else {
+      // Patient viewing their own blueprint - add connected family members
+      try {
+        final familyMemberIds = await familyService.getFamilyMembersForPatient(userId);
+        debugPrint('RecoveryCommandCenter: Found ${familyMemberIds.length} family members');
+        
+        for (final familyId in familyMemberIds) {
+          try {
+            final familyUser = await UserService().getUserById(familyId);
+            if (familyUser != null) {
+              careTeamMembers.add(CareTeamMember(
+                id: familyUser.id,
+                name: familyUser.name,
+                relationship: 'family',
+                email: familyUser.email,
+              ));
+            }
+          } catch (e) {
+            debugPrint('RecoveryCommandCenter: Error loading family member $familyId: $e');
+          }
+        }
+      } catch (e) {
+        debugPrint('RecoveryCommandCenter: Error loading family connections: $e');
+      }
+    }
+    
+    // Get patient's medications and existing blueprint routines
+    final patientUser = await UserService().getUserById(userId);
+    final dailyRoutines = <DailyRoutine>[];
+    
+    // Add medications as routines
+    if (patientUser != null && patientUser.medications.isNotEmpty) {
+      for (final med in patientUser.medications) {
+        dailyRoutines.add(DailyRoutine(
+          type: 'medication',
+          daysPerformed: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+          timesOfDay: med.times,
+          suppliesNeeded: [med.name, if (med.dosage != null) med.dosage!],
+        ));
+      }
+    }
+    
+    // Load existing routines from Recovery Blueprint (if it exists)
+    try {
+      // Try to get the patient's auth_user_id as well by querying the users table
+      String? authUserId;
+      try {
+        final response = await SupabaseConfig.client
+            .from('users')
+            .select('auth_user_id')
+            .eq('id', userId)
+            .maybeSingle();
+        authUserId = response?['auth_user_id'] as String?;
+        debugPrint('RecoveryCommandCenter: Patient authUserId=$authUserId');
+      } catch (e) {
+        debugPrint('RecoveryCommandCenter: Error getting authUserId: $e');
+      }
+      
+      var blueprint = await blueprintService.getByUserId(userId);
+      
+      // If not found with profile ID, try auth user ID
+      if (blueprint == null && authUserId != null && authUserId != userId) {
+        debugPrint('RecoveryCommandCenter: Blueprint not found with profile ID, trying authUserId...');
+        blueprint = await blueprintService.getByUserId(authUserId);
+      }
+      
+      if (blueprint != null && blueprint.dailyRoutines.isNotEmpty) {
+        debugPrint('RecoveryCommandCenter: Found existing blueprint with ${blueprint.dailyRoutines.length} routines');
+        // Add non-medication routines from blueprint
+        for (final routine in blueprint.dailyRoutines) {
+          if (routine.type.toLowerCase() != 'medication') {
+            dailyRoutines.add(routine);
+            debugPrint('RecoveryCommandCenter: - Added ${routine.type} routine with ${routine.timesOfDay.length} times');
+          }
+        }
+      } else {
+        debugPrint('RecoveryCommandCenter: No existing blueprint found (tried profile ID and auth ID), will infer from tracker data');
+        
+        // Only analyze tracker entries if no blueprint exists
+        final now = DateTime.now();
+        final last30Days = now.subtract(const Duration(days: 30));
+        final entries = await _trackerService.getEntriesByDateRange(userId, last30Days, now);
+        
+        // Check for bowel program tracking
+        final bowelEntries = entries.where((e) => e.bowelProgram == true).length;
+        if (bowelEntries > 0) {
+          dailyRoutines.add(DailyRoutine(
+            type: 'bowel',
+            daysPerformed: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+            timesOfDay: ['8:00 AM'], // Default time
+            suppliesNeeded: [],
+          ));
+        }
+        
+        // Check for bladder management tracking
+        final bladderEntries = entries.where((e) => e.bladderSuccess != null).length;
+        if (bladderEntries > 0) {
+          dailyRoutines.add(DailyRoutine(
+            type: 'bladder',
+            daysPerformed: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+            timesOfDay: ['9:00 AM', '3:00 PM', '9:00 PM'], // Default times
+            suppliesNeeded: [],
+          ));
+        }
+        
+        debugPrint('RecoveryCommandCenter: Found ${bowelEntries} bowel entries, ${bladderEntries} bladder entries');
+      }
+    } catch (e) {
+      debugPrint('RecoveryCommandCenter: Error loading blueprint or tracker data: $e');
+    }
+    
+    debugPrint('RecoveryCommandCenter: ✅ Data loaded!');
+    debugPrint('RecoveryCommandCenter: - Care team members: ${careTeamMembers.length}');
+    debugPrint('RecoveryCommandCenter: - Total routines: ${dailyRoutines.length}');
+    debugPrint('RecoveryCommandCenter: - Medication routines: ${dailyRoutines.where((r) => r.type.toLowerCase() == 'medication').length}');
+    debugPrint('RecoveryCommandCenter: - Care routines: ${dailyRoutines.where((r) => r.type.toLowerCase() != 'medication').length}');
+    for (final routine in dailyRoutines.where((r) => r.type.toLowerCase() != 'medication')) {
+      debugPrint('RecoveryCommandCenter:   * ${routine.type}: ${routine.timesOfDay}');
+    }
 
     // Calculate medication adherence from tracker
     double adherence = 0.0;
@@ -76,140 +211,90 @@ class _RecoveryBlueprintDashboardState extends State<RecoveryBlueprintDashboard>
       debugPrint('Error calculating medication adherence: $e');
     }
 
-    List<BlueprintCollaborator> collabs = const [];
-    if (bp != null) {
-      collabs = await _service.listCollaborators(bp.id);
-      _subscribeRealtime(bp.id);
-    }
-
     if (mounted) {
       setState(() {
-        _blueprint = bp;
+        _careTeam = careTeamMembers;
+        _dailyRoutines = dailyRoutines;
+        _patient = patientUser;
         _medicationAdherence = adherence;
-        _collaborators = collabs;
         _loading = false;
       });
     }
   }
 
-  void _subscribeRealtime(String blueprintId) {
-    final old = _channel;
-    if (old != null) {
-      SupabaseConfig.client.removeChannel(old);
-      _channel = null;
+  Future<void> _deleteMedication(Medication medication) async {
+    if (_patient == null) {
+      debugPrint('RecoveryCommandCenter._deleteMedication: no patient loaded');
+      return;
     }
-    _channel = _service.subscribeToBlueprint(
-      blueprintId: blueprintId,
-      onChange: (incoming) {
-        if (!mounted) return;
-        final me = SupabaseConfig.client.auth.currentUser?.id;
-        // Ignore echoes of our own edit.
-        if (incoming.updatedBy != null && incoming.updatedBy == me) return;
-        final editorName = _collaborators
-                .where((c) => c.userId == incoming.updatedBy)
-                .map((c) => c.displayName)
-                .firstWhere((n) => n != null && n.isNotEmpty, orElse: () => null) ??
-            'A collaborator';
-        setState(() {
-          _blueprint = incoming;
-          _liveBannerText = '$editorName just updated the blueprint';
-        });
-        Future.delayed(const Duration(seconds: 4), () {
-          if (mounted) setState(() => _liveBannerText = null);
-        });
-      },
-    );
-  }
 
-  void _showAutoLinkInfo() {
-    showDialog<void>(
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('How collaborators join'),
-        content: const Text(
-          'Family members automatically join this Recovery Blueprint as viewers '
-          'when they enter your patient code during enrollment.\n\n'
-          'No invites needed — just share your patient code with the people who '
-          'should see your blueprint.',
-        ),
+        title: const Text('Delete Medication'),
+        content: Text('Are you sure you want to delete ${medication.name}? All reminders will be cancelled.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Got it'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
-  }
 
-  void _updateRoutineTime(int index, List<String> times) async {
-    if (_blueprint == null) return;
-    
-    final routines = List<DailyRoutine>.from(_blueprint!.dailyRoutines);
-    final routine = routines[index];
-    
-    routines[index] = DailyRoutine(
-      type: routine.type,
-      daysPerformed: routine.daysPerformed,
-      timesOfDay: times,
-      suppliesNeeded: routine.suppliesNeeded,
-      assignedCaregiverId: routine.assignedCaregiverId,
-    );
-    
-    final updatedBlueprint = RecoveryBlueprint(
-      id: _blueprint!.id,
-      userId: _blueprint!.userId,
-      patientProfile: _blueprint!.patientProfile,
-      careTeam: _blueprint!.careTeam,
-      independenceAssessment: _blueprint!.independenceAssessment,
-      homeReadiness: _blueprint!.homeReadiness,
-      dailyRoutines: routines,
-      equipment: _blueprint!.equipment,
-      supplies: _blueprint!.supplies,
-      roadmap: _blueprint!.roadmap,
-      createdAt: _blueprint!.createdAt,
-      updatedAt: DateTime.now(),
-    );
-    
-    await _service.update(updatedBlueprint);
-    
-    // Reload from database to ensure UI is in sync
-    await _load();
-  }
+    if (confirmed != true) return;
 
-  void _updateRoutineDetails(int index, String? caregiverId, List<String> days, List<String> supplies) async {
-    if (_blueprint == null) return;
-    
-    final routines = List<DailyRoutine>.from(_blueprint!.dailyRoutines);
-    final routine = routines[index];
-    
-    routines[index] = DailyRoutine(
-      type: routine.type,
-      daysPerformed: days,
-      timesOfDay: routine.timesOfDay,
-      suppliesNeeded: supplies,
-      assignedCaregiverId: caregiverId,
-    );
-    
-    final updatedBlueprint = RecoveryBlueprint(
-      id: _blueprint!.id,
-      userId: _blueprint!.userId,
-      patientProfile: _blueprint!.patientProfile,
-      careTeam: _blueprint!.careTeam,
-      independenceAssessment: _blueprint!.independenceAssessment,
-      homeReadiness: _blueprint!.homeReadiness,
-      dailyRoutines: routines,
-      equipment: _blueprint!.equipment,
-      supplies: _blueprint!.supplies,
-      roadmap: _blueprint!.roadmap,
-      createdAt: _blueprint!.createdAt,
-      updatedAt: DateTime.now(),
-    );
-    
-    await _service.update(updatedBlueprint);
-    
-    // Reload from database to ensure UI is in sync
-    await _load();
+    // Remove from medications list
+    final updatedMedications = _patient!.medications.where((med) => med.id != medication.id).toList();
+    final updatedUser = _patient!.copyWith(medications: updatedMedications);
+
+    try {
+      await UserService().saveUser(updatedUser);
+      debugPrint('RecoveryCommandCenter._deleteMedication: Deleted ${medication.name}');
+      
+      // Cancel all notifications for this medication (both patient and family reminders)
+      await NotificationService.instance.cancelMedication(medication.id);
+      
+      // Cancel family medication reminders for this specific medication
+      final patientId = widget.patientId ?? _patient?.id;
+      if (patientId != null) {
+        await NotificationService.instance.cancelFamilyMedicationReminders(patientId);
+        
+        // Re-schedule remaining medications for family members
+        final remainingMeds = updatedUser.medications;
+        if (remainingMeds.isNotEmpty) {
+          final patientName = _patient?.name ?? 'Patient';
+          await NotificationService.instance.scheduleFamilyMedicationReminders(
+            medications: remainingMeds,
+            patientName: patientName,
+            patientId: patientId,
+          );
+        }
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${medication.name} deleted')),
+        );
+        // Reload to refresh UI
+        _load();
+      }
+    } catch (e) {
+      debugPrint('RecoveryCommandCenter._deleteMedication: error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting medication: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -218,30 +303,23 @@ class _RecoveryBlueprintDashboardState extends State<RecoveryBlueprintDashboard>
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A1A20),
-      extendBodyBehindAppBar: true,
+      // Keep content below the AppBar to avoid header overlap
+      extendBodyBehindAppBar: false,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text('Recovery Blueprint', style: context.textStyles.headlineMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
-        actions: _blueprint != null
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.white),
-                  tooltip: 'Edit Blueprint Settings',
-                  onPressed: () async {
-                    final route = widget.patientId != null
-                        ? '/family/recovery-blueprint/wizard'
-                        : '/recovery-blueprint/wizard';
-                    final result = await context.push(route, extra: _blueprint);
-                    if (result == true) _load();
-                  },
-                ),
-              ]
-            : null,
+        actions: [
+          IconButton(
+            icon: Icon(_compactMode ? Icons.view_agenda : Icons.view_compact, color: Colors.white),
+            tooltip: _compactMode ? 'Expanded View' : 'Compact View',
+            onPressed: () => setState(() => _compactMode = !_compactMode),
+          ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -257,79 +335,338 @@ class _RecoveryBlueprintDashboardState extends State<RecoveryBlueprintDashboard>
         ),
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: Colors.cyan))
-            : _blueprint == null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.radar, size: 80, color: Colors.cyan.withValues(alpha: 0.5)),
-                          const SizedBox(height: 24),
-                          Text('No Recovery Blueprint', style: context.textStyles.headlineSmall?.copyWith(color: Colors.white)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Create your blueprint to access the Recovery Command Center',
-                            style: context.textStyles.bodyMedium?.copyWith(color: Colors.white70),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
-                          FilledButton.icon(
-                            onPressed: () async {
-                              final route = widget.patientId != null 
-                                  ? '/family/recovery-blueprint/wizard'
-                                  : '/recovery-blueprint/wizard';
-                              final result = await context.push(route, extra: widget.patientId);
-                              if (result == true) _load();
-                            },
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.cyan,
-                              foregroundColor: Colors.black,
-                            ),
-                            icon: const Icon(Icons.add_chart),
-                            label: const Text('Create Blueprint'),
-                          ),
-                        ],
+            : SafeArea(
+                bottom: false,
+                child: SingleChildScrollView(
+                  // Add generous top padding (below AppBar) and bottom padding (above bottom nav)
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                  child: _compactMode
+                      ? _buildCompactView()
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                              // Today's Schedule Summary
+                              _TodayScheduleSummary(
+                                careTeam: _careTeam,
+                                dailyRoutines: _dailyRoutines,
+                                patient: _patient,
+                                patientId: widget.patientId,
+                              ),
+                              const SizedBox(height: 16),
+                              
+                              // Care Coordinator - Key insights
+                              _CareCoordinator(
+                                careTeam: _careTeam,
+                                dailyRoutines: _dailyRoutines,
+                                medicationAdherence: _medicationAdherence,
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Medications Section
+                              _MedicationsSection(
+                                patient: _patient,
+                                onDeleteMedication: _deleteMedication,
+                              ),
+                              const SizedBox(height: 16),
+                              
+                              // Daily Care Timeline (shared widget)
+                              DailyCareTimeline(
+                                dailyRoutines: _dailyRoutines,
+                                patientId: widget.patientId,
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Care Team - Who's helping and when
+                              _CareTeamSection(
+                                careTeam: _careTeam,
+                                patientId: widget.patientId,
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildCompactView() {
+    final careRoutines = _dailyRoutines.where((r) => r.type.toLowerCase() != 'medication').toList();
+    final medications = _patient?.medications ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Compact Summary Cards Row
+        Row(
+          children: [
+            Expanded(
+              child: _buildCompactCard(
+                icon: Icons.medication,
+                title: 'Medications',
+                count: '${medications.length}',
+                color: const Color(0xFFE91E63),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildCompactCard(
+                icon: Icons.access_time,
+                title: 'Care Routines',
+                count: '${careRoutines.length}',
+                color: Colors.cyan,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildCompactCard(
+                icon: Icons.people,
+                title: 'Care Team',
+                count: '${_careTeam.length}',
+                color: Colors.orange,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Compact Medications List
+        if (medications.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2F38).withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.medication, color: const Color(0xFFE91E63), size: 20),
+                    const SizedBox(width: 8),
+                    Text('Medications', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ...medications.map((med) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          med.name,
+                          style: context.textStyles.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w500),
+                        ),
                       ),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 100, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      ...med.times.take(3).map((time) => Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE91E63).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            time,
+                            style: context.textStyles.labelSmall?.copyWith(color: const Color(0xFFE91E63), fontSize: 10),
+                          ),
+                        ),
+                      )),
+                      if (med.times.length > 3)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Text(
+                            '+${med.times.length - 3}',
+                            style: context.textStyles.labelSmall?.copyWith(color: Colors.white60, fontSize: 10),
+                          ),
+                        ),
+                    ],
+                  ),
+                )),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // Compact Care Routines List
+        if (careRoutines.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2F38).withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.cyan.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.access_time, color: Colors.cyan, size: 20),
+                    const SizedBox(width: 8),
+                    Text('Daily Care Timeline', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ...careRoutines.map((routine) {
+                  Color routineColor = Colors.cyan;
+                  switch (routine.type.toLowerCase()) {
+                    case 'bowel':
+                      routineColor = const Color(0xFF9C27B0);
+                      break;
+                    case 'bladder':
+                      routineColor = const Color(0xFF2196F3);
+                      break;
+                    case 'skin_check':
+                      routineColor = const Color(0xFF00BCD4);
+                      break;
+                    case 'therapy':
+                      routineColor = const Color(0xFFFF9800);
+                      break;
+                    case 'nutrition':
+                      routineColor = const Color(0xFF4CAF50);
+                      break;
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
                       children: [
-                        _CollaboratorsBar(
-                          collaborators: _collaborators,
-                          blueprint: _blueprint!,
-                          liveBannerText: _liveBannerText,
-                          onInfoTap: _showAutoLinkInfo,
+                        Container(
+                          width: 4,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: routineColor,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        // Today's Schedule Summary
-                        _TodayScheduleSummary(blueprint: _blueprint!, patientId: widget.patientId),
-                        const SizedBox(height: 16),
-                        
-                        // Care Coordinator - Key insights
-                        _CareCoordinator(blueprint: _blueprint!, medicationAdherence: _medicationAdherence),
-                        const SizedBox(height: 16),
-
-                        // Care Team - Who's helping and when
-                        _CareTeamSection(blueprint: _blueprint!, patientId: widget.patientId),
-                        const SizedBox(height: 16),
-
-                        // Daily Care Timeline
-                        _DailyCareTimeline(
-                          blueprint: _blueprint!,
-                          onTimeUpdate: _updateRoutineTime,
-                          onDetailsUpdate: _updateRoutineDetails,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            routine.type.replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' '),
+                            style: context.textStyles.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w500),
+                          ),
                         ),
-                        const SizedBox(height: 16),
-
-                        // Equipment & Supplies
-                        _EquipmentSuppliesSection(blueprint: _blueprint!),
+                        ...routine.timesOfDay.take(3).map((time) => Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: routineColor.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              time,
+                              style: context.textStyles.labelSmall?.copyWith(color: routineColor, fontSize: 10),
+                            ),
+                          ),
+                        )),
+                        if (routine.timesOfDay.length > 3)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Text(
+                              '+${routine.timesOfDay.length - 3}',
+                              style: context.textStyles.labelSmall?.copyWith(color: Colors.white60, fontSize: 10),
+                            ),
+                          ),
                       ],
                     ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // Compact Care Team List
+        if (_careTeam.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2F38).withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.people, color: Colors.orange, size: 20),
+                    const SizedBox(width: 8),
+                    Text('Care Team', style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ..._careTeam.map((member) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: Colors.orange.withValues(alpha: 0.3),
+                        child: Text(
+                          member.name[0].toUpperCase(),
+                          style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          member.name,
+                          style: context.textStyles.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      Text(
+                        member.relationship.replaceAll('_', ' '),
+                        style: context.textStyles.bodySmall?.copyWith(color: Colors.white60, fontSize: 11),
+                      ),
+                    ],
                   ),
+                )),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCompactCard({
+    required IconData icon,
+    required String title,
+    required String count,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2F38).withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 6),
+          Text(
+            count,
+            style: context.textStyles.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            title,
+            style: context.textStyles.labelSmall?.copyWith(
+              color: Colors.white70,
+              fontSize: 10,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }
@@ -337,63 +674,38 @@ class _RecoveryBlueprintDashboardState extends State<RecoveryBlueprintDashboard>
 
 /// Week Calendar View - Visual calendar with time-blocked events
 class _TodayScheduleSummary extends StatefulWidget {
-  final RecoveryBlueprint blueprint;
+  final List<CareTeamMember> careTeam;
+  final List<DailyRoutine> dailyRoutines;
+  final User? patient;
   final String? patientId;
   
-  const _TodayScheduleSummary({required this.blueprint, this.patientId});
+  const _TodayScheduleSummary({
+    required this.careTeam,
+    required this.dailyRoutines,
+    required this.patient,
+    this.patientId,
+  });
 
   @override
   State<_TodayScheduleSummary> createState() => _TodayScheduleSummaryState();
 }
 
 class _TodayScheduleSummaryState extends State<_TodayScheduleSummary> {
-  final _userService = UserService();
-  User? _patient;
-  bool _loading = true;
   DateTime _selectedWeekStart = DateTime.now();
   
   @override
   void initState() {
     super.initState();
     _selectedWeekStart = _getWeekStart(DateTime.now());
-    _loadPatient();
   }
   
   DateTime _getWeekStart(DateTime date) {
     return date.subtract(Duration(days: date.weekday % 7));
   }
-  
-  Future<void> _loadPatient() async {
-    final userId = widget.patientId ?? context.read<UserProvider>().currentUser?.id;
-    if (userId == null) {
-      setState(() => _loading = false);
-      return;
-    }
-    
-    final patient = await _userService.getUserById(userId);
-    if (mounted) {
-      setState(() {
-        _patient = patient;
-        _loading = false;
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
-    if (_loading) {
-      return Container(
-        height: 400,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0D2530),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.cyan.withValues(alpha: 0.2)),
-        ),
-        child: const Center(child: CircularProgressIndicator()),
-      );
-    }
     
     return Container(
       decoration: BoxDecoration(
@@ -408,12 +720,14 @@ class _TodayScheduleSummaryState extends State<_TodayScheduleSummary> {
           ),
         ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           _buildHeader(cs),
           _WeekCalendarView(
-            blueprint: widget.blueprint,
-            patient: _patient,
+            careTeam: widget.careTeam,
+            dailyRoutines: widget.dailyRoutines,
+            patient: widget.patient,
             weekStart: _selectedWeekStart,
             memberColors: _getMemberColors(),
           ),
@@ -505,8 +819,8 @@ class _TodayScheduleSummaryState extends State<_TodayScheduleSummary> {
       Colors.amber,
     ];
     
-    for (var i = 0; i < widget.blueprint.careTeam.length; i++) {
-      memberColors[widget.blueprint.careTeam[i].id] = colorPalette[i % colorPalette.length];
+    for (var i = 0; i < widget.careTeam.length; i++) {
+      memberColors[widget.careTeam[i].id] = colorPalette[i % colorPalette.length];
     }
     
     return memberColors;
@@ -536,13 +850,15 @@ class _ScheduleItem {
 
 /// Week Calendar View with time-blocked events
 class _WeekCalendarView extends StatefulWidget {
-  final RecoveryBlueprint blueprint;
+  final List<CareTeamMember> careTeam;
+  final List<DailyRoutine> dailyRoutines;
   final User? patient;
   final DateTime weekStart;
   final Map<String, Color> memberColors;
   
   const _WeekCalendarView({
-    required this.blueprint,
+    required this.careTeam,
+    required this.dailyRoutines,
     required this.patient,
     required this.weekStart,
     required this.memberColors,
@@ -821,8 +1137,11 @@ class _WeekCalendarViewState extends State<_WeekCalendarView> {
       }
     }
     
-    // Add daily routines
-    for (var routine in widget.blueprint.dailyRoutines) {
+    // Add daily routines (exclude medications as they're shown separately)
+    for (var routine in widget.dailyRoutines) {
+      // Skip medication routines - they're already shown from patient.medications
+      if (routine.type.toLowerCase() == 'medication') continue;
+      
       Color color = Colors.blue;
       
       switch (routine.type.toLowerCase()) {
@@ -844,7 +1163,7 @@ class _WeekCalendarViewState extends State<_WeekCalendarView> {
       }
       
       final assignedMember = routine.assignedCaregiverId != null
-          ? widget.blueprint.careTeam.where((m) => m.id == routine.assignedCaregiverId).firstOrNull
+          ? widget.careTeam.where((m) => m.id == routine.assignedCaregiverId).firstOrNull
           : null;
       
       // Add an event for each time
@@ -862,7 +1181,7 @@ class _WeekCalendarViewState extends State<_WeekCalendarView> {
     }
     
     // Add team member activities
-    for (var member in widget.blueprint.careTeam) {
+    for (var member in widget.careTeam) {
       final daySchedule = member.schedule[dateKey];
       if (daySchedule != null) {
         for (var slot in daySchedule) {
@@ -929,10 +1248,15 @@ class _CalendarEvent {
 
 /// Care Coordinator - Smart insights about recovery plan
 class _CareCoordinator extends StatelessWidget {
-  final RecoveryBlueprint blueprint;
+  final List<CareTeamMember> careTeam;
+  final List<DailyRoutine> dailyRoutines;
   final double medicationAdherence;
 
-  const _CareCoordinator({required this.blueprint, required this.medicationAdherence});
+  const _CareCoordinator({
+    required this.careTeam,
+    required this.dailyRoutines,
+    required this.medicationAdherence,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -988,31 +1312,25 @@ class _CareCoordinator extends StatelessWidget {
     // Care coverage analysis
     final totalSlots = 7 * 4;
     int coveredSlots = 0;
-    for (final member in blueprint.careTeam) {
+    for (final member in careTeam) {
       member.availability.forEach((day, periods) => coveredSlots += periods.length);
     }
     final coverage = totalSlots > 0 ? coveredSlots / totalSlots : 0.0;
     
-    if (blueprint.careTeam.isEmpty) {
+    if (careTeam.isEmpty) {
       insights.add(_Insight('No care team members added yet. Add family or professional caregivers.', true));
     } else if (coverage < 0.5) {
       insights.add(_Insight('${(coverage * 100).round()}% of weekly care slots covered. Add more caregivers or extend availability.', true));
     }
 
     // Daily routines
-    if (blueprint.dailyRoutines.isEmpty) {
+    if (dailyRoutines.isEmpty) {
       insights.add(_Insight('No daily care routines scheduled. Add tasks like medications, meals, and exercises.', true));
     } else {
-      final unassigned = blueprint.dailyRoutines.where((r) => r.assignedCaregiverId == null).length;
+      final unassigned = dailyRoutines.where((r) => r.assignedCaregiverId == null).length;
       if (unassigned > 0) {
         insights.add(_Insight('$unassigned care task${unassigned > 1 ? 's' : ''} not assigned to anyone. Assign team members for clarity.', true));
       }
-    }
-
-    // Supplies
-    final lowSupplies = blueprint.supplies.where((s) => s.needsReorder).length;
-    if (lowSupplies > 0) {
-      insights.add(_Insight('$lowSupplies supply item${lowSupplies > 1 ? 's' : ''} running low. Restock soon to avoid shortages.', true));
     }
 
     // Positive message if everything looks good
@@ -1030,12 +1348,189 @@ class _Insight {
   _Insight(this.message, this.isWarning);
 }
 
+/// Medications Section - Display patient medications
+class _MedicationsSection extends StatefulWidget {
+  final User? patient;
+  final Future<void> Function(Medication)? onDeleteMedication;
+  
+  const _MedicationsSection({required this.patient, this.onDeleteMedication});
+
+  @override
+  State<_MedicationsSection> createState() => _MedicationsSectionState();
+}
+
+class _MedicationsSectionState extends State<_MedicationsSection> {
+  bool _expanded = false;
+
+  void _showMedicationOptions(BuildContext context, Medication medication) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A2F38),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.delete, color: cs.error),
+              title: Text('Delete Medication', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                if (widget.onDeleteMedication != null) {
+                  widget.onDeleteMedication!(medication);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final medications = widget.patient?.medications ?? [];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2F38).withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.cyan.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Icon(Icons.medication, color: const Color(0xFFE91E63), size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Medications',
+                          style: context.textStyles.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${medications.length} medication${medications.length != 1 ? 's' : ''}',
+                          style: context.textStyles.bodySmall?.copyWith(
+                            color: Colors.white60,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded && medications.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                children: medications.map((med) {
+                  return InkWell(
+                    onLongPress: widget.onDeleteMedication != null
+                        ? () => _showMedicationOptions(context, med)
+                        : null,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D2530),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                        Row(
+                          children: [
+                            Icon(Icons.medication, size: 20, color: const Color(0xFFE91E63)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                med.name,
+                                style: context.textStyles.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (med.dosage != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            med.dosage!,
+                            style: context.textStyles.bodyMedium?.copyWith(
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                        if (med.times.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: med.times.map((time) => Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE91E63).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.4)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.access_time, size: 12, color: const Color(0xFFE91E63)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    time,
+                                    style: context.textStyles.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFFE91E63),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )).toList(),
+                          ),
+                        ],
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Care Team Section - Simple list of team members with scheduling
 class _CareTeamSection extends StatelessWidget {
-  final RecoveryBlueprint blueprint;
+  final List<CareTeamMember> careTeam;
   final String? patientId;
   
-  const _CareTeamSection({required this.blueprint, this.patientId});
+  const _CareTeamSection({required this.careTeam, this.patientId});
 
   @override
   Widget build(BuildContext context) {
@@ -1073,10 +1568,10 @@ class _CareTeamSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (blueprint.careTeam.isEmpty)
+          if (careTeam.isEmpty)
             Text('No team members added yet', style: context.textStyles.bodyMedium?.copyWith(color: Colors.white60))
           else
-            ...blueprint.careTeam.map((member) {
+            ...careTeam.map((member) {
               // Count availability slots
               int totalSlots = 0;
               member.availability.forEach((day, periods) => totalSlots += periods.length);
@@ -1134,369 +1629,399 @@ class _CareTeamSection extends StatelessWidget {
 }
 
 /// Daily Care Timeline (Centerpiece)
-class _DailyCareTimeline extends StatelessWidget {
-  final RecoveryBlueprint blueprint;
-  final Function(int index, List<String> times) onTimeUpdate;
-  final Function(int index, String? caregiverId, List<String> days, List<String> supplies) onDetailsUpdate;
+class _DailyCareTimeline extends StatefulWidget {
+  final List<DailyRoutine> dailyRoutines;
+  final String? patientId;
   
   const _DailyCareTimeline({
-    required this.blueprint,
-    required this.onTimeUpdate,
-    required this.onDetailsUpdate,
+    required this.dailyRoutines,
+    this.patientId,
   });
+
+  @override
+  State<_DailyCareTimeline> createState() => _DailyCareTimelineState();
+}
+
+class _DailyCareTimelineState extends State<_DailyCareTimeline> {
+  bool _expanded = true;
+
+  Future<void> _addNewRoutine() async {
+    final newRoutine = await showDialog<DailyRoutine>(
+      context: context,
+      builder: (context) => _AddRoutineDialog(),
+    );
+
+    if (newRoutine == null) return;
+
+    // Save to database
+    try {
+      // Use patientId if provided (for family portal), otherwise use current user
+      final userId = widget.patientId ?? Provider.of<UserProvider>(context, listen: false).currentUser?.id;
+      if (userId == null) return;
+      
+      debugPrint('[DailyCareTimeline] Adding routine for userId=$userId (patientId=${widget.patientId})');
+
+      final blueprintService = RecoveryBlueprintService();
+      
+      // Get existing blueprint or create new one
+      var blueprint = await blueprintService.getByUserId(userId);
+      
+      if (blueprint == null) {
+        // Create a new blueprint with the routine
+        blueprint = RecoveryBlueprint(
+          id: const Uuid().v4(),
+          userId: userId,
+          patientProfile: PatientProfile(
+            primaryDiagnosis: 'Unknown',
+            recoveryPhase: RecoveryPhase.postDischarge,
+          ),
+          careTeam: const [],
+          independenceAssessment: const IndependenceAssessment(),
+          homeReadiness: const HomeReadiness(),
+          dailyRoutines: [newRoutine],
+          equipment: const [],
+          supplies: const [],
+          roadmap: const RecoveryRoadmap(
+            immediatePriorities: [],
+            shortTermGoals: [],
+            longTermGoals: [],
+            warnings: [],
+          ),
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await blueprintService.create(blueprint);
+      } else {
+        // Add routine to existing blueprint
+        final updatedBlueprint = RecoveryBlueprint(
+          id: blueprint.id,
+          userId: blueprint.userId,
+          patientProfile: blueprint.patientProfile,
+          careTeam: blueprint.careTeam,
+          independenceAssessment: blueprint.independenceAssessment,
+          homeReadiness: blueprint.homeReadiness,
+          dailyRoutines: [...blueprint.dailyRoutines, newRoutine],
+          equipment: blueprint.equipment,
+          supplies: blueprint.supplies,
+          roadmap: blueprint.roadmap,
+          createdAt: blueprint.createdAt,
+          updatedAt: DateTime.now(),
+        );
+        await blueprintService.update(updatedBlueprint);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Routine added successfully'), backgroundColor: Colors.green),
+        );
+        // Reload the dashboard
+        Navigator.of(context).pop();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RecoveryBlueprintDashboard(patientId: widget.patientId),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error saving routine: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving routine: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteRoutine(DailyRoutine routine) async {
+    // Confirm deletion
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2F38),
+        title: Text('Delete Routine', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to delete the ${routine.type.replaceAll('_', ' ')} routine?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Delete from database
+    try {
+      // Use patientId if provided (for family portal), otherwise use current user
+      final userId = widget.patientId ?? Provider.of<UserProvider>(context, listen: false).currentUser?.id;
+      if (userId == null) return;
+      
+      debugPrint('[DailyCareTimeline] Deleting routine for userId=$userId (patientId=${widget.patientId})');
+
+      final blueprintService = RecoveryBlueprintService();
+      final blueprint = await blueprintService.getByUserId(userId);
+      
+      if (blueprint == null) return;
+
+      // Remove the routine
+      final updatedRoutines = blueprint.dailyRoutines.where((r) => 
+        !(r.type == routine.type && 
+          r.timesOfDay.join(',') == routine.timesOfDay.join(',') &&
+          r.daysPerformed.join(',') == routine.daysPerformed.join(','))
+      ).toList();
+
+      final updatedBlueprint = RecoveryBlueprint(
+        id: blueprint.id,
+        userId: blueprint.userId,
+        patientProfile: blueprint.patientProfile,
+        careTeam: blueprint.careTeam,
+        independenceAssessment: blueprint.independenceAssessment,
+        homeReadiness: blueprint.homeReadiness,
+        dailyRoutines: updatedRoutines,
+        equipment: blueprint.equipment,
+        supplies: blueprint.supplies,
+        roadmap: blueprint.roadmap,
+        createdAt: blueprint.createdAt,
+        updatedAt: DateTime.now(),
+      );
+      
+      await blueprintService.update(updatedBlueprint);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Routine deleted successfully'), backgroundColor: Colors.green),
+        );
+        // Reload the dashboard
+        Navigator.of(context).pop();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RecoveryBlueprintDashboard(patientId: widget.patientId),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error deleting routine: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting routine: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final careRoutines = widget.dailyRoutines.where((r) => r.type.toLowerCase() != 'medication').toList();
 
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF1A2F38).withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.cyan.withValues(alpha: 0.3)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.access_time, color: Colors.cyan, size: 24),
-              const SizedBox(width: 8),
-              Text('Daily Care Timeline', style: context.textStyles.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (blueprint.dailyRoutines.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text('No routines scheduled yet', style: context.textStyles.bodyMedium?.copyWith(color: Colors.white60)),
-            )
-          else
-            ...blueprint.dailyRoutines.asMap().entries.map((entry) {
-              final index = entry.key;
-              final routine = entry.value;
-              
-              // Find assigned caregiver name
-              String? assignedName;
-              if (routine.assignedCaregiverId != null) {
-                final member = blueprint.careTeam.where((m) => m.id == routine.assignedCaregiverId).firstOrNull;
-                assignedName = member?.name;
-              }
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: InkWell(
-                  onTap: () => _showRoutineDetailsDialog(context, routine, index, blueprint.careTeam, onDetailsUpdate, onTimeUpdate),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0D2530),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.cyan.withValues(alpha: 0.3)),
-                    ),
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Icon(Icons.access_time, color: Colors.cyan, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                routine.type.replaceAll('_', ' ').toUpperCase(),
-                                style: context.textStyles.bodyLarge?.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
-                              ),
-                            ),
-                            Icon(Icons.edit, size: 16, color: Colors.white60),
-                          ],
+                        Text(
+                          'Daily Care Timeline',
+                          style: context.textStyles.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
-                        const SizedBox(height: 10),
-                        // Times chips
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            ...routine.timesOfDay.map((time) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.cyan.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.cyan.withValues(alpha: 0.4)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
+                        const SizedBox(height: 4),
+                        Text(
+                          '${careRoutines.length} routine${careRoutines.length != 1 ? 's' : ''}',
+                          style: context.textStyles.bodySmall?.copyWith(
+                            color: Colors.white60,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _addNewRoutine,
+                    icon: const Icon(Icons.add_circle, color: Colors.cyan, size: 28),
+                    tooltip: 'Add routine',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.cyan.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: careRoutines.isEmpty
+                  ? Column(
+                      children: [
+                        Text(
+                          'No care routines added yet.',
+                          style: context.textStyles.bodyMedium?.copyWith(color: Colors.white60),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: _addNewRoutine,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Care Routine'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.cyan,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: careRoutines.map((routine) {
+                        // Determine color based on routine type
+                        Color routineColor = Colors.cyan;
+                        IconData routineIcon = Icons.schedule;
+                        
+                        switch (routine.type.toLowerCase()) {
+                          case 'bowel':
+                            routineColor = const Color(0xFF9C27B0); // Purple
+                            routineIcon = Icons.spa;
+                            break;
+                          case 'bladder':
+                            routineColor = const Color(0xFF2196F3); // Blue
+                            routineIcon = Icons.water_drop;
+                            break;
+                          case 'skin_check':
+                            routineColor = const Color(0xFF00BCD4); // Cyan
+                            routineIcon = Icons.health_and_safety;
+                            break;
+                          case 'therapy':
+                            routineColor = const Color(0xFFFF9800); // Orange
+                            routineIcon = Icons.fitness_center;
+                            break;
+                          case 'nutrition':
+                            routineColor = const Color(0xFF4CAF50); // Green
+                            routineIcon = Icons.restaurant;
+                            break;
+                        }
+                        
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0D2530),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: routineColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
                                 children: [
-                                  Icon(Icons.access_time, size: 12, color: Colors.cyan),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    time,
-                                    style: context.textStyles.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.cyan,
+                                  Icon(routineIcon, size: 20, color: routineColor),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      routine.type.replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' '),
+                                      style: context.textStyles.bodyLarge?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: () => _deleteRoutine(routine),
+                                    icon: const Icon(Icons.delete_outline, size: 20),
+                                    tooltip: 'Delete routine',
+                                    color: Colors.red.shade300,
+                                    style: IconButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
                                     ),
                                   ),
                                 ],
                               ),
-                            )),
-                            if (routine.timesOfDay.isEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.cyan.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.cyan.withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.add_alarm, size: 12, color: Colors.cyan.withValues(alpha: 0.6)),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Add time',
-                                      style: context.textStyles.labelSmall?.copyWith(color: Colors.cyan.withValues(alpha: 0.6)),
+                              if (routine.timesOfDay.isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: routine.timesOfDay.map((time) => Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: routineColor.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: routineColor.withValues(alpha: 0.4)),
                                     ),
-                                  ],
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.access_time, size: 12, color: routineColor),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          time,
+                                          style: context.textStyles.labelSmall?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            color: routineColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )).toList(),
                                 ),
-                              ),
-                          ],
-                        ),
-                        if (assignedName != null || routine.daysPerformed.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              if (assignedName != null) ...[
-                                Icon(Icons.person, size: 14, color: Colors.white60),
-                                const SizedBox(width: 4),
-                                Text(assignedName, style: context.textStyles.labelSmall?.copyWith(color: Colors.white60)),
                               ],
-                              if (assignedName != null && routine.daysPerformed.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Text('•', style: TextStyle(color: Colors.white60)),
+                              if (routine.daysPerformed.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 4,
+                                  children: routine.daysPerformed.map((day) => Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: routineColor.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      day.substring(0, 3).toUpperCase(),
+                                      style: context.textStyles.labelSmall?.copyWith(
+                                        color: Colors.white60,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  )).toList(),
                                 ),
-                              if (routine.daysPerformed.isNotEmpty)
-                                Expanded(
-                                  child: Text(
-                                    routine.daysPerformed.map((d) => d.substring(0, 3).toUpperCase()).join(', '),
-                                    style: context.textStyles.labelSmall?.copyWith(color: Colors.white60),
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false,
-                                  ),
-                                ),
+                              ],
                             ],
                           ),
-                        ],
-                      ],
+                        );
+                      }).toList(),
                     ),
-                  ),
-                ),
-              );
-            }),
+            ),
         ],
       ),
     );
-  }
-  
-
-  static void _showRoutineDetailsDialog(
-    BuildContext context,
-    DailyRoutine routine,
-    int index,
-    List<CareTeamMember> careTeam,
-    Function(int, String?, List<String>, List<String>) onDetailsUpdate,
-    Function(int, List<String>) onTimeUpdate,
-  ) {
-    final suppliesController = TextEditingController(text: routine.suppliesNeeded.join(', '));
-    String? selectedCaregiver = routine.assignedCaregiverId;
-    final selectedDays = List<String>.from(routine.daysPerformed);
-    final selectedTimes = List<String>.from(routine.timesOfDay);
-    
-    final allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (statefulContext, setDialogState) => AlertDialog(
-          title: Text('Edit ${routine.type.replaceAll('_', ' ')}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Times Section
-                Row(
-                  children: [
-                    const Text('Times:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: () async {
-                        final now = TimeOfDay.now();
-                        final time = await showTimePicker(
-                          context: dialogContext,
-                          initialTime: now,
-                        );
-                        if (time != null) {
-                          final formattedTime = time.format(dialogContext);
-                          if (!selectedTimes.contains(formattedTime)) {
-                            setDialogState(() {
-                              selectedTimes.add(formattedTime);
-                              selectedTimes.sort((a, b) => _compareTimeStrings(a, b));
-                            });
-                          }
-                        }
-                      },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add Time'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.cyan,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (selectedTimes.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'No times set. Tap "Add Time" to schedule.',
-                      style: TextStyle(color: Colors.white60, fontSize: 12),
-                    ),
-                  )
-                else
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: selectedTimes.map((time) => Chip(
-                      label: Text(time),
-                      deleteIcon: const Icon(Icons.close, size: 16),
-                      onDeleted: () {
-                        setDialogState(() {
-                          selectedTimes.remove(time);
-                        });
-                      },
-                    )).toList(),
-                  ),
-                const SizedBox(height: 8),
-                // Quick time suggestions
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: ['6:00 AM', '8:00 AM', '12:00 PM', '2:00 PM', '6:00 PM', '8:00 PM'].map((time) {
-                    final isAdded = selectedTimes.contains(time);
-                    return ActionChip(
-                      label: Text(time, style: TextStyle(fontSize: 11)),
-                      onPressed: isAdded ? null : () {
-                        setDialogState(() {
-                          selectedTimes.add(time);
-                          selectedTimes.sort((a, b) => _compareTimeStrings(a, b));
-                        });
-                      },
-                      backgroundColor: isAdded ? Colors.cyan.withValues(alpha: 0.3) : null,
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 16),
-                const Text('Assigned Caregiver:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: selectedCaregiver,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: 'Select caregiver',
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('Unassigned')),
-                    ...careTeam.map((member) => DropdownMenuItem(
-                      value: member.id,
-                      child: Text(member.name),
-                    )),
-                  ],
-                  onChanged: (value) {
-                    setDialogState(() => selectedCaregiver = value);
-                  },
-                ),
-                const SizedBox(height: 16),
-                const Text('Days:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: allDays.map((day) {
-                    final isSelected = selectedDays.contains(day.toLowerCase());
-                    return FilterChip(
-                      label: Text(day.substring(0, 3)),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setDialogState(() {
-                          if (selected) {
-                            selectedDays.add(day.toLowerCase());
-                          } else {
-                            selectedDays.remove(day.toLowerCase());
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: suppliesController,
-                  decoration: const InputDecoration(
-                    labelText: 'Supplies Needed',
-                    border: OutlineInputBorder(),
-                    hintText: 'Comma separated',
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  maxLines: 2,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                // Update times first
-                onTimeUpdate(index, selectedTimes);
-                // Then update other details
-                onDetailsUpdate(
-                  index,
-                  selectedCaregiver,
-                  selectedDays,
-                  suppliesController.text.trim().isEmpty
-                      ? []
-                      : suppliesController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-                );
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  static int _compareTimeStrings(String a, String b) {
-    // Simple time comparison for sorting (AM/PM format)
-    final aHour = int.tryParse(a.split(':')[0]) ?? 0;
-    final bHour = int.tryParse(b.split(':')[0]) ?? 0;
-    final aIsAm = a.contains('AM');
-    final bIsAm = b.contains('AM');
-    
-    if (aIsAm && !bIsAm) return -1;
-    if (!aIsAm && bIsAm) return 1;
-    
-    final aHour24 = aIsAm ? (aHour == 12 ? 0 : aHour) : (aHour == 12 ? 12 : aHour + 12);
-    final bHour24 = bIsAm ? (bHour == 12 ? 0 : bHour) : (bHour == 12 ? 12 : bHour + 12);
-    
-    return aHour24.compareTo(bHour24);
   }
 }
 
@@ -1749,6 +2274,280 @@ class _CollaboratorsBar extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Dialog to add a new daily care routine
+class _AddRoutineDialog extends StatefulWidget {
+  @override
+  State<_AddRoutineDialog> createState() => _AddRoutineDialogState();
+}
+
+class _AddRoutineDialogState extends State<_AddRoutineDialog> {
+  String _selectedType = 'bowel';
+  final _timeControllers = <TextEditingController>[];
+  final _times = <String>[];
+  final _selectedDays = <String>{};
+  
+  final _routineTypes = [
+    {'value': 'bowel', 'label': 'Bowel Program', 'icon': Icons.spa},
+    {'value': 'bladder', 'label': 'Bladder Management', 'icon': Icons.water_drop},
+    {'value': 'skin_check', 'label': 'Skin Check', 'icon': Icons.health_and_safety},
+    {'value': 'therapy', 'label': 'Therapy', 'icon': Icons.fitness_center},
+    {'value': 'nutrition', 'label': 'Nutrition', 'icon': Icons.restaurant},
+  ];
+  
+  final _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  
+  @override
+  void initState() {
+    super.initState();
+    // Add all days by default
+    _selectedDays.addAll(_days.map((d) => d.toLowerCase()));
+    // Add one default time
+    _addTimeField('8:00 AM');
+  }
+  
+  @override
+  void dispose() {
+    for (var controller in _timeControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+  
+  void _addTimeField([String? initialTime]) {
+    final controller = TextEditingController(text: initialTime ?? '');
+    _timeControllers.add(controller);
+    if (initialTime != null) {
+      _times.add(initialTime);
+    }
+  }
+  
+  void _removeTimeField(int index) {
+    setState(() {
+      _timeControllers[index].dispose();
+      _timeControllers.removeAt(index);
+      if (index < _times.length) {
+        _times.removeAt(index);
+      }
+    });
+  }
+  
+  void _saveRoutine() {
+    // Collect times from controllers
+    final times = _timeControllers.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
+    
+    if (times.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add at least one time'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    
+    if (_selectedDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one day'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    
+    final routine = DailyRoutine(
+      type: _selectedType,
+      daysPerformed: _selectedDays.toList(),
+      timesOfDay: times,
+      suppliesNeeded: [],
+    );
+    
+    Navigator.of(context).pop(routine);
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    
+    return Dialog(
+      backgroundColor: const Color(0xFF1A2F38),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.add_circle_outline, color: Colors.cyan, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Add Care Routine',
+                    style: context.textStyles.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Routine Type
+                    Text('Routine Type', style: context.textStyles.titleSmall?.copyWith(color: Colors.white70)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _routineTypes.map((type) {
+                        final isSelected = _selectedType == type['value'];
+                        return FilterChip(
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(type['icon'] as IconData, size: 16, color: isSelected ? Colors.white : Colors.white60),
+                              const SizedBox(width: 6),
+                              Text(type['label'] as String),
+                            ],
+                          ),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setState(() => _selectedType = type['value'] as String);
+                          },
+                          selectedColor: Colors.cyan,
+                          backgroundColor: const Color(0xFF0D2530),
+                          labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white60),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Times
+                    Row(
+                      children: [
+                        Text('Times', style: context.textStyles.titleSmall?.copyWith(color: Colors.white70)),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() => _addTimeField());
+                          },
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('Add Time'),
+                          style: TextButton.styleFrom(foregroundColor: Colors.cyan),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ..._timeControllers.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final controller = entry.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: controller,
+                                decoration: InputDecoration(
+                                  hintText: '8:00 AM',
+                                  filled: true,
+                                  fillColor: const Color(0xFF0D2530),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: Colors.cyan.withValues(alpha: 0.3)),
+                                  ),
+                                  hintStyle: TextStyle(color: Colors.white30),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                ),
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            if (_timeControllers.length > 1) ...[
+                              const SizedBox(width: 8),
+                              IconButton(
+                                onPressed: () => _removeTimeField(index),
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 24),
+                    
+                    // Days
+                    Text('Days of Week', style: context.textStyles.titleSmall?.copyWith(color: Colors.white70)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _days.map((day) {
+                        final dayLower = day.toLowerCase();
+                        final isSelected = _selectedDays.contains(dayLower);
+                        return FilterChip(
+                          label: Text(day.substring(0, 3)),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setState(() {
+                              if (selected) {
+                                _selectedDays.add(dayLower);
+                              } else {
+                                _selectedDays.remove(dayLower);
+                              }
+                            });
+                          },
+                          selectedColor: Colors.cyan,
+                          backgroundColor: const Color(0xFF0D2530),
+                          labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white60),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _saveRoutine,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.cyan,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Save Routine'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

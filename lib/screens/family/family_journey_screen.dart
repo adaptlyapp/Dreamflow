@@ -80,7 +80,6 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (_isLoading) {
@@ -90,7 +89,9 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
             // Background Image
             Positioned.fill(
               child: Image.asset(
-                'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
+                isDark
+                    ? 'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png'
+                    : 'assets/images/Misty_Mountain_Sunrise_Road.png',
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Container(
                   decoration: const BoxDecoration(
@@ -126,7 +127,9 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
             // Background Image
             Positioned.fill(
               child: Image.asset(
-                'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
+                isDark
+                    ? 'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png'
+                    : 'assets/images/Misty_Mountain_Sunrise_Road.png',
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Container(
                   decoration: const BoxDecoration(
@@ -222,7 +225,9 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
           // Background Image
           Positioned.fill(
             child: Image.asset(
-              'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
+              isDark
+                  ? 'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png'
+                  : 'assets/images/Misty_Mountain_Sunrise_Road.png',
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => Container(
                 decoration: const BoxDecoration(
@@ -280,25 +285,16 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
                     _RecoveryBlueprintCard(
                       blueprint: _patientBlueprint!,
                       onView: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => RecoveryBlueprintDashboard(
-                              patientId: _patientId,
-                            ),
-                          ),
-                        );
+                        // Navigate to family timeline view using go_router
+                        context.push('/family/recovery-blueprint/timeline',
+                            extra: _patientId);
                       },
                     )
                   else
                     _NoRecoveryBlueprintCard(
                       onCreate: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text(
-                                'The patient hasn\'t created their Recovery Blueprint yet.'),
-                            backgroundColor: Colors.orange.shade700,
-                          ),
-                        );
+                        context.push('/family/recovery-blueprint/timeline',
+                            extra: _patientId);
                       },
                     ),
                   const SizedBox(height: 24),
@@ -344,7 +340,7 @@ class _FamilyJourneyScreenState extends State<FamilyJourneyScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Create your own recovery milestones and track your progress',
+                          'Uncertain on how to do something as a caregiver? Ask A.R.I.E',
                           style: context.textStyles.bodyMedium?.withColor(
                             Colors.white.withValues(alpha: 0.7),
                           ),
@@ -701,7 +697,7 @@ class _RecoveryMilestonesCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Recovery Milestones',
+                            'Patient Recovery Milestones',
                             style: context.textStyles.titleLarge?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: Colors.white,
@@ -924,7 +920,7 @@ class _RecoveryBlueprintCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Local Resource Consultation',
+                        'Daily Care Timeline',
                         style: context.textStyles.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -1035,71 +1031,81 @@ class _NoRecoveryBlueprintCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFF1ED3CF).withValues(alpha: 0.3),
-          width: 1.5,
+    return InkWell(
+      onTap: onCreate,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFF1ED3CF).withValues(alpha: 0.3),
+            width: 1.5,
+          ),
         ),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1ED3CF).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1ED3CF).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.description_outlined,
+                    color: Color(0xFF1ED3CF),
+                    size: 22,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.description_outlined,
-                  color: Color(0xFF1ED3CF),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Recovery Blueprint',
-                      style: context.textStyles.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Recovery Blueprint',
+                        style: context.textStyles.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Not created yet',
-                      style: context.textStyles.bodyMedium?.withColor(
-                        Colors.white.withValues(alpha: 0.6),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Not created yet',
+                        style: context.textStyles.bodyMedium?.withColor(
+                          Colors.white.withValues(alpha: 0.6),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'The patient hasn\'t created their Recovery Blueprint yet. A blueprint helps organize:',
-            style: context.textStyles.bodyMedium?.withColor(
-              Colors.white.withValues(alpha: 0.7),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white.withValues(alpha: 0.5),
+                  size: 18,
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 14),
-          _BlueprintFeature(icon: Icons.people, text: 'Care team coordination'),
-          _BlueprintFeature(
-              icon: Icons.schedule, text: 'Daily routine scheduling'),
-          _BlueprintFeature(
-              icon: Icons.inventory_2, text: 'Equipment & supply tracking'),
-        ],
+            const SizedBox(height: 16),
+            Text(
+              'The patient hasn\'t created their Recovery Blueprint yet. A blueprint helps organize:',
+              style: context.textStyles.bodyMedium?.withColor(
+                Colors.white.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _BlueprintFeature(
+                icon: Icons.people, text: 'Care team coordination'),
+            _BlueprintFeature(
+                icon: Icons.schedule, text: 'Daily routine scheduling'),
+            _BlueprintFeature(
+                icon: Icons.inventory_2, text: 'Equipment & supply tracking'),
+          ],
+        ),
       ),
     );
   }

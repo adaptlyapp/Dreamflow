@@ -346,4 +346,34 @@ class PlanTimelineService {
       updatedAt: DateTime.now(),
     );
   }
+
+  /// Get all timelines for a user across all conditions
+  Future<List<PlanTimeline>> getTimelinesForUser(String userId) async {
+    try {
+      final data = await _supabase
+          .from('plan_timelines')
+          .select()
+          .eq('user_id', userId)
+          .order('is_current', ascending: false)
+          .order('updated_at', ascending: false);
+
+      final timelines = (data as List<dynamic>)
+          .map((row) => PlanTimeline.fromJson({
+                'id': row['id'],
+                'user_id': row['user_id'],
+                'condition_id': row['condition_id'],
+                'name': row['name'],
+                'is_current': row['is_current'],
+                'milestones': row['milestones'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+              }))
+          .toList();
+
+      return timelines;
+    } catch (e) {
+      debugPrint('PlanTimelineService.getTimelinesForUser error: $e');
+      return [];
+    }
+  }
 }

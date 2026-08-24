@@ -10,7 +10,6 @@ import 'package:wellspring/services/condition_service.dart';
 import 'package:wellspring/services/milestone_service.dart';
 import 'package:wellspring/services/goal_service.dart';
 import 'package:wellspring/theme.dart';
-import 'package:wellspring/widgets/glass_card.dart';
 
 class ConditionsScreen extends StatefulWidget {
   const ConditionsScreen({super.key});
@@ -94,17 +93,8 @@ class _ConditionsScreenState extends State<ConditionsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          RefreshIndicator.adaptive(
+    return GlassyScaffold(
+      body: RefreshIndicator.adaptive(
             onRefresh: _loadData,
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
@@ -122,10 +112,12 @@ class _ConditionsScreenState extends State<ConditionsScreen>
                             children: [
                               Text(
                                 'My hubs',
-                                style: context.textStyles.headlineSmall?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineSmall
+                                    ?.copyWith(
+                                        color: Color(0xFF000000),
+                                        fontWeight: FontWeight.bold),
                               ),
                               Container(
                                 padding: EdgeInsets.symmetric(
@@ -133,15 +125,18 @@ class _ConditionsScreenState extends State<ConditionsScreen>
                                   vertical: AppSpacing.xs,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1ED3CF).withValues(alpha: 0.2),
+                                  color: const Color(0xFF1ED3CF)
+                                      .withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: const Color(0xFF1ED3CF).withValues(alpha: 0.4),
+                                    color: const Color(0xFF1ED3CF)
+                                        .withValues(alpha: 0.4),
                                   ),
                                 ),
                                 child: Text(
                                   '${_userConditions.length}',
-                                  style: context.textStyles.labelMedium?.copyWith(
+                                  style:
+                                      context.textStyles.labelMedium?.copyWith(
                                     color: const Color(0xFF1ED3CF),
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -152,9 +147,14 @@ class _ConditionsScreenState extends State<ConditionsScreen>
                           SizedBox(height: AppSpacing.xs),
                           Text(
                             'Tap a condition to open your plan and timeline.',
-                            style: context.textStyles.bodySmall?.copyWith(
-                              color: Colors.white.withValues(alpha: 0.7),
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.color),
                           ),
                         ],
                       ),
@@ -180,11 +180,18 @@ class _ConditionsScreenState extends State<ConditionsScreen>
                       AppSpacing.xxl,
                     ),
                     sliver: SliverList.separated(
-                      itemCount: _userConditions.length,
+                      itemCount: _userConditions.length + 1,
                       separatorBuilder: (_, __) =>
                           SizedBox(height: AppSpacing.md),
                       itemBuilder: (context, i) {
-                        final condition = _userConditions[i];
+                        // Add "My Team" card as the first item
+                        if (i == 0) {
+                          return _MyTeamCard(userId: _userId);
+                        }
+
+                        // Adjust index for conditions
+                        final conditionIndex = i - 1;
+                        final condition = _userConditions[conditionIndex];
                         final milestones =
                             _milestonesByCondition[condition.id] ?? [];
                         final goals = _goalsByCondition[condition.id] ?? [];
@@ -193,8 +200,8 @@ class _ConditionsScreenState extends State<ConditionsScreen>
                           condition: condition,
                           milestones: milestones,
                           goals: goals,
-                          onTap: () =>
-                              context.push('/plan/${condition.id}', extra: condition.name),
+                          onTap: () => context.push('/plan/${condition.id}',
+                              extra: condition.name),
                         );
                       },
                     ),
@@ -202,8 +209,6 @@ class _ConditionsScreenState extends State<ConditionsScreen>
               ],
             ),
           ),
-        ],
-      ),
     );
   }
 
@@ -337,14 +342,16 @@ class _ConditionCard extends StatelessWidget {
             if (hasPlan) ...[
               SizedBox(height: AppSpacing.md),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0D2A3D).withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.lightbulb_outline, color: Color(0xFFFFA726), size: 16),
+                    const Icon(Icons.lightbulb_outline,
+                        color: Color(0xFFFFA726), size: 16),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -424,6 +431,111 @@ class _TagChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MyTeamCard extends StatelessWidget {
+  final String? userId;
+
+  const _MyTeamCard({this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push('/recovery-blueprint/schedule', extra: userId),
+      child: Container(
+        padding: EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6B46C1), Color(0xFF9F7AEA)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6B46C1).withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.people_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+                SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'My Team',
+                        style: context.textStyles.titleLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Care team & schedules',
+                        style: context.textStyles.labelSmall?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ],
+            ),
+            SizedBox(height: AppSpacing.md),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today,
+                      color: Colors.white, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'View care team schedules and daily routines',
+                      style: context.textStyles.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

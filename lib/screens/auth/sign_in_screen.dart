@@ -7,12 +7,10 @@ import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/widgets/skeletons.dart';
 import 'package:wellspring/theme.dart';
-import 'package:wellspring/widgets/brand_logo.dart';
 import 'package:wellspring/models/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:wellspring/auth/supabase_auth_manager.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -38,7 +36,7 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   void initState() {
     super.initState();
-    // Clear any pending OAuth role from a previous session to ensure clean state
+// Clear any pending OAuth role from a previous session to ensure clean state
     _clearPendingOAuthRole();
   }
 
@@ -46,26 +44,15 @@ class _SignInScreenState extends State<SignInScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('pending_oauth_role');
-      // IMPORTANT: Don't clear last_active_role here!
-      // If we clear it, getCurrentUser() will default to the most recently updated profile,
-      // which can cause users to randomly switch between patient/family portals.
-      // Only clear last_active_role on actual sign-out.
+// IMPORTANT: Don't clear last_active_role here!
+// If we clear it, getCurrentUser() will default to the most recently updated profile,
+// which can cause users to randomly switch between patient/family portals.
+// Only clear last_active_role on actual sign-out.
       debugPrint(
           '[SignIn] Cleared pending_oauth_role on screen init (preserved last_active_role)');
     } catch (e) {
       debugPrint('[SignIn] Error clearing OAuth roles: $e');
     }
-  }
-
-  void _openManualCodeEntry() {
-    final from = GoRouterState.of(context).uri.queryParameters['from'];
-    final target =
-        from != null && from.isNotEmpty ? Uri.decodeComponent(from) : '/';
-    final email = _emailController.text.trim();
-    final emailParam =
-        email.isNotEmpty ? '&email=${Uri.encodeComponent(email)}' : '';
-    context.go(
-        '/auth/callback?manual=1&from=${Uri.encodeComponent(target)}$emailParam');
   }
 
   @override
@@ -102,12 +89,12 @@ class _SignInScreenState extends State<SignInScreen> {
         );
       }
 
-      // Load provider user for in-app usage
+// Load provider user for in-app usage
       if (mounted) {
         await context.read<UserProvider>().loadUser();
       }
 
-      // For new accounts, ensure the tutorial runs on first app session
+// For new accounts, ensure the tutorial runs on first app session
       if (_isRegister) {
         try {
           await _userService.setHasSeenTutorial(false);
@@ -116,14 +103,14 @@ class _SignInScreenState extends State<SignInScreen> {
         }
       }
 
-      // For newly registered users
+// For newly registered users
       if (!mounted) return;
 
       if (_isRegister) {
-        // Check if email confirmation is required
+// Check if email confirmation is required
         final session = await _userService.getCurrentSession();
         if (session == null) {
-          // Email confirmation required - show message
+// Email confirmation required - show message
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -136,26 +123,26 @@ class _SignInScreenState extends State<SignInScreen> {
         }
       }
 
-      // Navigate to MFA screen (only if no errors were thrown above)
+// Navigate to MFA screen (only if no errors were thrown above)
       if (!mounted) return;
       final from = GoRouterState.of(context).uri.queryParameters['from'];
 
-      // Determine target based on registration status and onboarding completion
+// Determine target based on registration status and onboarding completion
       String target;
       if (_isRegister) {
-        // New registration - always go through onboarding
+// New registration - always go through onboarding
         target = _isFamily ? '/family/onboarding' : '/onboarding/questionnaire';
         debugPrint(
             '[SignIn] New registration for ${_isFamily ? "family" : "patient"}, routing to: $target');
       } else {
-        // Sign-in - check if profile exists for this role
+// Sign-in - check if profile exists for this role
         final currentUser = await _userService.getCurrentUser();
         debugPrint(
             '[SignIn] Sign-in for ${_isFamily ? "family" : "patient"}, currentUser exists: ${currentUser != null}');
 
         if (currentUser == null) {
-          // No profile exists for this role - this shouldn't happen on sign-in
-          // Show error and suggest they create account instead
+// No profile exists for this role - this shouldn't happen on sign-in
+// Show error and suggest they create account instead
           setState(() {
             _error =
                 'No ${_isFamily ? "family" : "patient"} account found. Please use "Create account" to add a ${_isFamily ? "family" : "patient"} profile.';
@@ -163,17 +150,17 @@ class _SignInScreenState extends State<SignInScreen> {
           return;
         }
 
-        // Check if onboarding is completed
+// Check if onboarding is completed
         final isOnboardingCompleted =
             await _userService.isOnboardingCompleted();
         debugPrint('[SignIn] onboardingCompleted=$isOnboardingCompleted');
         if (!isOnboardingCompleted) {
-          // Existing account but onboarding not completed - route to onboarding
+// Existing account but onboarding not completed - route to onboarding
           target =
               _isFamily ? '/family/onboarding' : '/onboarding/questionnaire';
           debugPrint('[SignIn] Incomplete onboarding, routing to: $target');
         } else {
-          // Onboarding completed - use deep link or default home
+// Onboarding completed - use deep link or default home
           target = (from != null && from.isNotEmpty)
               ? Uri.decodeComponent(from)
               : (_isFamily ? '/family/dashboard' : '/');
@@ -200,7 +187,7 @@ class _SignInScreenState extends State<SignInScreen> {
   String _friendlyError(AuthException e) {
     final msg = e.message.toLowerCase();
 
-    // Check for specific multi-profile message first (before generic "already" check)
+// Check for specific multi-profile message first (before generic "already" check)
     if (msg.contains('already has an account') &&
         msg.contains('existing password')) {
       return e.message; // Return the full custom message
@@ -210,7 +197,7 @@ class _SignInScreenState extends State<SignInScreen> {
     }
     if (msg.contains('invalid login credentials') ||
         msg.contains('user not found')) {
-      // Check if this might be an OAuth-only account (common scenario)
+// Check if this might be an OAuth-only account (common scenario)
       return 'Incorrect email or password.\n\nIf you signed up with Google/Apple, click "Forgot password?" to set a password for your account.';
     }
     if (msg.contains('email') && msg.contains('already')) {
@@ -237,25 +224,26 @@ class _SignInScreenState extends State<SignInScreen> {
       _error = null;
     });
     try {
-      // Save selected role for OAuth flow
+// Save selected role for OAuth flow
       await _saveOAuthRole();
       debugPrint('[SignIn] Calling UserService.signInWithGoogle()...');
       await _userService.signInWithGoogle();
 
       debugPrint(
           '[SignIn] signInWithGoogle() completed (should redirect on web)');
-      // On web, OAuth redirects away, so this code won't execute
-      // On mobile, OAuth opens external browser and returns immediately
-      // The callback will be handled when the user returns to the app
+// On web, OAuth redirects away, so this code won't execute
+// On mobile, OAuth opens external browser and returns immediately
+// The callback will be handled when the user returns to the app
       if (kIsWeb) {
-        // Web: should have redirected, won't reach here
+// Web: should have redirected, won't reach here
       } else {
-        // Mobile: show message and reset loading state
+// Mobile: show message and reset loading state
         if (mounted) {
           setState(() => _googleLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Complete sign in in your browser, then return to the app'),
+              content: Text(
+                  'Complete sign in in your browser, then return to the app'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -284,60 +272,69 @@ class _SignInScreenState extends State<SignInScreen> {
   Future<void> _signInWithApple() async {
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     debugPrint('[AppleSignIn] Button clicked, starting sign in');
-    debugPrint('[AppleSignIn] Platform: ${kIsWeb ? "Web" : "Native (iOS/Android)"}');
-    debugPrint('[AppleSignIn] Selected role: ${_isFamily ? "family" : "patient"}');
+    debugPrint(
+        '[AppleSignIn] Platform: ${kIsWeb ? "Web" : "Native (iOS/Android)"}');
+    debugPrint(
+        '[AppleSignIn] Selected role: ${_isFamily ? "family" : "patient"}');
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
+
     setState(() {
       _appleLoading = true;
       _error = null;
     });
-    
+
     try {
-      // STEP 1: Save selected role for OAuth flow
+// STEP 1: Save selected role for OAuth flow
       debugPrint('[AppleSignIn] STEP 1: Saving OAuth role...');
       await _saveOAuthRole();
       debugPrint('[AppleSignIn] STEP 1: ✓ OAuth role saved');
-      
-      // STEP 2: Call UserService
-      debugPrint('[AppleSignIn] STEP 2: Calling UserService.signInWithApple()...');
+
+// STEP 2: Call UserService
+      debugPrint(
+          '[AppleSignIn] STEP 2: Calling UserService.signInWithApple()...');
       final user = await _userService.signInWithApple(context);
-      debugPrint('[AppleSignIn] STEP 2: ✓ UserService returned, user=${user?.id ?? "null"}');
+      debugPrint(
+          '[AppleSignIn] STEP 2: ✓ UserService returned, user=${user?.id ?? "null"}');
 
       if (kIsWeb) {
-        // Web: OAuth redirects away to browser, won't reach here
+// Web: OAuth redirects away to browser, won't reach here
         debugPrint('[AppleSignIn] Web OAuth redirect should have occurred');
       } else {
-        // Mobile (iOS/Android): Native Apple Sign-In completes immediately
+// Mobile (iOS/Android): Native Apple Sign-In completes immediately
         debugPrint('[AppleSignIn] STEP 3: Processing native sign-in result...');
-        
+
         if (user != null && mounted) {
-          debugPrint('[AppleSignIn] STEP 4: User authenticated, loading provider...');
-          // Load user provider
+          debugPrint(
+              '[AppleSignIn] STEP 4: User authenticated, loading provider...');
+// Load user provider
           await context.read<UserProvider>().loadUser();
           debugPrint('[AppleSignIn] STEP 4: ✓ Provider loaded');
-          
-          // Navigate to appropriate screen based on onboarding status
+
+// Navigate to appropriate screen based on onboarding status
           debugPrint('[AppleSignIn] STEP 5: Checking onboarding status...');
-          final isOnboardingCompleted = await _userService.isOnboardingCompleted();
-          debugPrint('[AppleSignIn] STEP 5: Onboarding completed = $isOnboardingCompleted');
-          
+          final isOnboardingCompleted =
+              await _userService.isOnboardingCompleted();
+          debugPrint(
+              '[AppleSignIn] STEP 5: Onboarding completed = $isOnboardingCompleted');
+
           final from = GoRouterState.of(context).uri.queryParameters['from'];
-          
+
           String target;
           if (!isOnboardingCompleted) {
-            target = _isFamily ? '/family/onboarding' : '/onboarding/questionnaire';
+            target =
+                _isFamily ? '/family/onboarding' : '/onboarding/questionnaire';
           } else {
             target = (from != null && from.isNotEmpty)
                 ? Uri.decodeComponent(from)
                 : (_isFamily ? '/family/dashboard' : '/');
           }
-          
+
           debugPrint('[AppleSignIn] STEP 6: Navigating to: $target');
           context.go(target);
           debugPrint('[AppleSignIn] ✓✓✓ Apple Sign-In COMPLETE ✓✓✓');
         } else if (user == null) {
-          debugPrint('[AppleSignIn] ⚠️ User is null (likely cancelled by user)');
+          debugPrint(
+              '[AppleSignIn] ⚠️ User is null (likely cancelled by user)');
           if (mounted) {
             setState(() => _appleLoading = false);
           }
@@ -351,29 +348,30 @@ class _SignInScreenState extends State<SignInScreen> {
     } on SignInWithAppleAuthorizationException catch (e, stackTrace) {
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       debugPrint('[AppleSignIn] ✗ SignInWithAppleAuthorizationException');
-      debugPrint('[AppleSignIn]   Code: ${e.code}');
-      debugPrint('[AppleSignIn]   Message: ${e.message}');
-      debugPrint('[AppleSignIn]   Stack: $stackTrace');
+      debugPrint('[AppleSignIn] Code: ${e.code}');
+      debugPrint('[AppleSignIn] Message: ${e.message}');
+      debugPrint('[AppleSignIn] Stack: $stackTrace');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       if (e.code == AuthorizationErrorCode.canceled && mounted) {
-        // User cancelled - just reset loading state, no error message
-        debugPrint('[AppleSignIn] User cancelled (this is normal, not an error)');
+// User cancelled - just reset loading state, no error message
+        debugPrint(
+            '[AppleSignIn] User cancelled (this is normal, not an error)');
         setState(() => _appleLoading = false);
       } else if (mounted) {
         setState(() {
           _appleLoading = false;
-          _error = 'Apple sign in failed: ${e.message ?? e.code.toString()}';
+          _error = 'Apple sign in failed: ${e.message}';
         });
       }
     } on AuthException catch (e, stackTrace) {
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       debugPrint('[AppleSignIn] ✗ Supabase AuthException');
-      debugPrint('[AppleSignIn]   Message: ${e.message}');
-      debugPrint('[AppleSignIn]   Status: ${e.statusCode}');
-      debugPrint('[AppleSignIn]   Stack: $stackTrace');
+      debugPrint('[AppleSignIn] Message: ${e.message}');
+      debugPrint('[AppleSignIn] Status: ${e.statusCode}');
+      debugPrint('[AppleSignIn] Stack: $stackTrace');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       if (mounted) {
         setState(() {
           _appleLoading = false;
@@ -383,10 +381,10 @@ class _SignInScreenState extends State<SignInScreen> {
     } catch (e, stackTrace) {
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       debugPrint('[AppleSignIn] ✗ Unexpected error (${e.runtimeType})');
-      debugPrint('[AppleSignIn]   Error: $e');
-      debugPrint('[AppleSignIn]   Stack: $stackTrace');
+      debugPrint('[AppleSignIn] Error: $e');
+      debugPrint('[AppleSignIn] Stack: $stackTrace');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       if (mounted) {
         setState(() {
           _appleLoading = false;
@@ -428,26 +426,10 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final fillColor = isLight ? const Color(0xFF2B2B2B) : null;
-    final labelStyle = context.textStyles.labelLarge?.withColor(Colors.white);
-    final hintStyle = context.textStyles.bodyMedium
-        ?.withColor(Colors.white.withValues(alpha: 0.7));
-    final iconColor = Colors.white.withValues(alpha: 0.9);
-    return Scaffold(
-      // Let the Scaffold adjust for the keyboard and avoid bottom overflow
+    return GlassyScaffold(
+// Let the Scaffold adjust for the keyboard and avoid bottom overflow
       resizeToAvoidBottomInset: true,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Background image with wave effects
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/ChatGPT_Image_Jul_13_2026_08_13_46_AM_1.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          SafeArea(
+      body: SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.lg, vertical: AppSpacing.xl),
@@ -455,8 +437,9 @@ class _SignInScreenState extends State<SignInScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 520),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisSize: MainAxisSize.max,
                     crossAxisAlignment: CrossAxisAlignment.center,
+                    spacing: 20,
                     children: [
                       TweenAnimationBuilder<double>(
                         duration: const Duration(milliseconds: 850),
@@ -465,29 +448,33 @@ class _SignInScreenState extends State<SignInScreen> {
                         builder: (_, scale, child) =>
                             Transform.scale(scale: scale, child: child),
                         child: Image.asset(
-                          'assets/images/ChatGPT_Image_Jul_13_2026_12_13_23_PM.png',
-                          fit: BoxFit.contain,
-                          height: 200,
+                          'assets/images/Main_logo.png',
+                          fit: BoxFit.fill,
+                          height: 180,
+                          width: 300,
                         ),
                       ),
                       Transform.translate(
-                        offset: Offset(0, -30),
+                        offset: Offset(0, -25),
                         child: Text(
                           'A better tomorrow, together.',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: LightModeColors.lightInfo),
                           textAlign: TextAlign.center,
                         ),
                       ),
                       Transform.translate(
-                        offset: Offset(0, -36),
+                        offset: Offset(0, -50),
                         child: Text(
                           _isRegister
                               ? 'Join Adaptly to personalize your support.'
                               : 'Join Adaptly to personalize your support.',
-                          style: context.textStyles.bodyMedium?.withColor(
-                            Colors.white.withValues(alpha: 0.65),
-                          ),
                           textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
                         ),
                       ),
                       Transform.translate(
@@ -530,16 +517,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       ),
                       Transform.translate(
                         offset: const Offset(0, -24),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color:
-                                const Color(0xFF0A3D4D).withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              width: 1,
-                            ),
-                          ),
+                        child: Padding(
                           padding: const EdgeInsets.all(AppSpacing.lg),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -727,28 +705,25 @@ class _SignInScreenState extends State<SignInScreen> {
                                 children: [
                                   Expanded(
                                     child: Divider(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.2),
-                                      thickness: 1,
-                                    ),
+                                        color: LightModeColors.lightInfo,
+                                        thickness: 1),
                                   ),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: AppSpacing.md),
                                     child: Text(
                                       'OR',
-                                      style: context.textStyles.labelSmall
-                                          ?.withColor(
-                                        Colors.white.withValues(alpha: 0.5),
-                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                              color: LightModeColors.lightInfo),
                                     ),
                                   ),
                                   Expanded(
                                     child: Divider(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.2),
-                                      thickness: 1,
-                                    ),
+                                        color: LightModeColors.lightInfo,
+                                        thickness: 1),
                                   ),
                                 ],
                               ),
@@ -867,10 +842,11 @@ class _SignInScreenState extends State<SignInScreen> {
                                     _isRegister
                                         ? 'Have an account?'
                                         : 'New here?',
-                                    style: context.textStyles.bodyMedium
-                                        ?.withColor(
-                                      Colors.white.withValues(alpha: 0.7),
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                            color: LightModeColors.lightInfo),
                                   ),
                                   TextButton(
                                     onPressed: _loading
@@ -914,13 +890,12 @@ class _SignInScreenState extends State<SignInScreen> {
               ),
             ),
           ),
-        ],
-      ),
     );
   }
 }
 
 /// Gradient-styled brand wordmark for the sign-in header
+// ignore: unused_element
 class _BrandWordmark extends StatelessWidget {
   const _BrandWordmark({required this.name});
 

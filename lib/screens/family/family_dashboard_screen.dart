@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
+import 'package:wellspring/models/medication.dart';
 import 'package:wellspring/models/patient_connection.dart';
 import 'package:wellspring/models/tracker_entry.dart';
 import 'package:wellspring/models/goal.dart';
@@ -17,11 +18,13 @@ import 'package:wellspring/models/education_resource.dart';
 import 'package:wellspring/services/organization_service.dart';
 import 'package:wellspring/services/hospital_service.dart';
 import 'package:wellspring/services/vr_agency_service.dart';
+import 'package:wellspring/services/notification_service.dart';
 import 'package:wellspring/models/organization.dart';
 import 'package:wellspring/models/hospital.dart';
 import 'package:wellspring/models/vr_agency.dart';
 import 'package:wellspring/theme.dart';
 import 'package:wellspring/widgets/brand_logo.dart';
+import 'package:wellspring/widgets/care_question_bubble.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
 import 'package:url_launcher/url_launcher.dart';
@@ -42,7 +45,6 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
 
   PatientConnection? _connection;
   List<TrackerEntry>? _recentEntries;
-  Map<String, double>? _stats;
   int _healthScore = 0;
   String _healthStatus = 'Good';
   List<Map<String, dynamic>>? _chartData;
@@ -53,6 +55,9 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
   bool _allMilestonesCompleted = false;
   RecoveryBlueprint? _blueprint;
   bool _loading = true;
+  User? _patientUser;
+  User? _currentUser;
+  bool _medicationExpanded = false;
 
   @override
   void initState() {
@@ -73,7 +78,10 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
       final connection = await _familyService.getPrimaryConnection(user.id);
       if (connection == null) {
         debugPrint('[FamilyDashboard] No patient connection found');
-        setState(() => _loading = false);
+        setState(() {
+          _currentUser = user;
+          _loading = false;
+        });
         return;
       }
       debugPrint(
@@ -113,6 +121,30 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
           await _blueprintService.getByUserId(connection.patientId);
       debugPrint('[FamilyDashboard] Blueprint loaded: ${blueprint != null}');
 
+      // Load patient user data for medications
+      debugPrint('[FamilyDashboard] Fetching patient user data...');
+      final patientUser = await _userService.getUserById(connection.patientId);
+      debugPrint(
+          '[FamilyDashboard] Patient user loaded: ${patientUser != null}, medications: ${patientUser?.medications.length ?? 0}');
+
+      // Schedule medication reminders for family members
+      // First, cancel any existing reminders to avoid duplicates
+      debugPrint('[FamilyDashboard] Canceling existing family medication reminders...');
+      await NotificationService.instance.cancelFamilyMedicationReminders(connection.patientId);
+      
+      if (patientUser != null && patientUser.medications.isNotEmpty) {
+        debugPrint(
+            '[FamilyDashboard] [FAMILY PORTAL] Scheduling ${patientUser.medications.length} medication reminders for family members...');
+        await NotificationService.instance.scheduleFamilyMedicationReminders(
+          medications: patientUser.medications,
+          patientName: connection.patientName,
+          patientId: connection.patientId,
+        );
+        debugPrint('[FamilyDashboard] ✓ Family medication reminders scheduled');
+      } else {
+        debugPrint('[FamilyDashboard] No medications to schedule for family reminders');
+      }
+
       // Find next incomplete milestone
       final incomplete = milestones.where((m) => !m.completed).toList();
       Milestone? nextMilestone;
@@ -134,9 +166,9 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
       }
 
       setState(() {
+        _currentUser = user;
         _connection = connection;
         _recentEntries = recentEntries;
-        _stats = stats;
         _healthScore = healthScore;
         _healthStatus = healthStatus;
         _chartData = chartData;
@@ -146,6 +178,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
         _nextMilestone = nextMilestone;
         _allMilestonesCompleted = allCompleted;
         _blueprint = blueprint;
+        _patientUser = patientUser;
         _loading = false;
       });
       debugPrint('[FamilyDashboard] Data load complete');
@@ -258,7 +291,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (_loading) {
-      return Scaffold(
+      return GlassyScaffold(
         backgroundColor:
             isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
         body: Center(child: CircularProgressIndicator(color: cs.primary)),
@@ -266,7 +299,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
     }
 
     if (_connection == null) {
-      return Scaffold(
+      return GlassyScaffold(
         backgroundColor:
             isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
         appBar: AppBar(title: const Text('Family Portal')),
@@ -314,30 +347,19 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
       );
     }
 
-    return Scaffold(
+    return GlassyScaffold(
       backgroundColor:
           isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
       drawer: _buildDrawer(context),
       body: Stack(
         children: [
-          // Background Image
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/ChatGPT_Image_Aug_4_2026_01_35_03_PM.png',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color:
-                    isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),
-              ),
-            ),
-          ),
-          // Content (removed SafeArea wrapper to extend to top)
+          // Scrollable Content with top padding for fixed header
           SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _FamilyHeader(),
-                const SizedBox(height: AppSpacing.md),
+                // Spacer to account for fixed header height (status bar + header)
+                SizedBox(height: MediaQuery.of(context).padding.top + 170),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 0),
                   child: _WelcomeCard(
@@ -353,12 +375,43 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
                   recentEntries: _recentEntries ?? [],
                   healthScore: _healthScore,
                 ),
+                const SizedBox(height: AppSpacing.xl),
+                if (_patientUser != null)
+                  _PatientMedicationsSection(
+                    patientName: _connection!.patientName,
+                    medications: _patientUser!.medications,
+                    isExpanded: _medicationExpanded,
+                    onToggleExpand: () => setState(
+                        () => _medicationExpanded = !_medicationExpanded),
+                  ),
                 SizedBox(
-                    height: MediaQuery.of(context).padding.bottom +
-                        AppSpacing.xl),
+                    height:
+                        MediaQuery.of(context).padding.bottom + AppSpacing.xl),
               ],
             ),
           ),
+          // Fixed Header at top (positioned outside scroll view)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _FamilyHeader(currentUser: _currentUser),
+          ),
+          // Care Question Bubble
+          if (_connection != null)
+            FutureBuilder<User?>(
+              future: _userService.getCurrentUser(),
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data != null) {
+                  return CareQuestionBubble(
+                    userId: snapshot.data!.id,
+                    patientId: _connection!.patientId,
+                    isFamily: true,
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
         ],
       ),
     );
@@ -367,7 +420,9 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
 
 // Family Header (Patient Portal Style)
 class _FamilyHeader extends StatefulWidget {
-  const _FamilyHeader();
+  const _FamilyHeader({this.currentUser});
+  
+  final User? currentUser;
 
   @override
   State<_FamilyHeader> createState() => _FamilyHeaderState();
@@ -380,7 +435,7 @@ class _FamilyHeaderState extends State<_FamilyHeader> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final today = DateFormat('EEE, MMM d').format(DateTime.now());
-    
+
     // Time-based greeting
     final hour = DateTime.now().hour;
     final String greeting = hour < 12
@@ -389,11 +444,20 @@ class _FamilyHeaderState extends State<_FamilyHeader> {
 
     List<Color> _canopyColors(ColorScheme cs) {
       if (hour < 12) {
-        return [const Color(0xFF4A90E2), const Color(0xFF2F80FF)]; // Morning blue
+        return [
+          const Color(0xFF4A90E2),
+          const Color(0xFF2F80FF)
+        ]; // Morning blue
       } else if (hour < 17) {
-        return [const Color(0xFF2F80FF), const Color(0xFF1E5FBF)]; // Afternoon blue
+        return [
+          const Color(0xFF2F80FF),
+          const Color(0xFF1E5FBF)
+        ]; // Afternoon blue
       } else {
-        return [const Color(0xFF1E5FBF), const Color(0xFF0D47A1)]; // Evening darker blue
+        return [
+          const Color(0xFF1E5FBF),
+          const Color(0xFF0D47A1)
+        ]; // Evening darker blue
       }
     }
 
@@ -442,145 +506,164 @@ class _FamilyHeaderState extends State<_FamilyHeader> {
                   left: AppSpacing.lg,
                   right: AppSpacing.lg,
                   top: MediaQuery.of(context).padding.top + AppSpacing.md,
-                  bottom: AppSpacing.sm,
+                  bottom: AppSpacing.md,
                 ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top row: Brand with greeting pill directly to its right
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const BrandLogo(size: 84),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(child: _FamilyGreetingPill(text: '$greeting, Adaptly')),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      // Collapse quick actions behind a single toggle
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final maxDateWidth =
-                                  (constraints.maxWidth * 0.44).clamp(120.0, 190.0);
-                              return Row(
-                                children: [
-                                  Expanded(
-                                    child: _FamilyQuickActionButton(
-                                      icon: _expanded
-                                          ? Icons.expand_less
-                                          : Icons.expand_more,
-                                      label: _expanded
-                                          ? 'Hide quick actions'
-                                          : 'Quick actions',
-                                      onTap: () =>
-                                          setState(() => _expanded = !_expanded),
-                                      bgColor:
-                                          cs.onPrimary.withValues(alpha: 0.12),
-                                      fgColor: cs.onPrimary,
-                                      borderColor:
-                                          cs.onPrimary.withValues(alpha: 0.20),
-                                    ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top row: Brand with greeting pill directly to its right
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const BrandLogo(size: 84),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                            child: _FamilyGreetingPill(
+                                text: widget.currentUser != null 
+                                    ? '$greeting, ${widget.currentUser!.name}'
+                                    : '$greeting, Adaptly')),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    // Collapse quick actions behind a single toggle
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final maxDateWidth = (constraints.maxWidth * 0.44)
+                                .clamp(120.0, 190.0);
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: _FamilyQuickActionButton(
+                                    icon: _expanded
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                    label: _expanded
+                                        ? 'Hide quick actions'
+                                        : 'Quick actions',
+                                    onTap: () =>
+                                        setState(() => _expanded = !_expanded),
+                                    bgColor:
+                                        cs.onPrimary.withValues(alpha: 0.12),
+                                    fgColor: cs.onPrimary,
+                                    borderColor:
+                                        cs.onPrimary.withValues(alpha: 0.20),
                                   ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  ConstrainedBox(
-                                    constraints:
-                                        BoxConstraints(maxWidth: maxDateWidth),
-                                    child: Align(
-                                      alignment: Alignment.centerRight,
-                                      child: _FamilyTodayPill(text: today),
-                                    ),
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                ConstrainedBox(
+                                  constraints:
+                                      BoxConstraints(maxWidth: maxDateWidth),
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: _FamilyTodayPill(text: today),
                                   ),
-                                ],
-                              );
-                            },
-                          ),
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                            child: _expanded
-                                ? Padding(
-                                    padding:
-                                        const EdgeInsets.only(top: AppSpacing.sm),
-                                    child: Wrap(
-                                      spacing: AppSpacing.md,
-                                      runSpacing: AppSpacing.sm,
-                                      children: [
-                                        _FamilyQuickActionButton(
-                                          icon: Icons.school_rounded,
-                                          label: 'Education',
-                                          onTap: () => context.push('/family/education'),
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _FamilyQuickActionButton(
-                                          icon: Icons.notifications_rounded,
-                                          label: 'Alerts',
-                                          onTap: () => context.go('/family/alerts'),
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _FamilyQuickActionButton(
-                                          icon: Icons.chat_bubble_rounded,
-                                          label: 'Messages',
-                                          onTap: () => context.push('/messages'),
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _FamilyQuickActionButton(
-                                          icon: Icons.folder_rounded,
-                                          label: 'Resources',
-                                          onTap: () => context.go('/family/resources'),
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _FamilyQuickActionButton(
-                                          icon: Icons.favorite_rounded,
-                                          label: 'Health Tracker',
-                                          onTap: () => context.go('/family/health'),
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                        _FamilyQuickActionButton(
-                                          icon: Icons.emoji_events_rounded,
-                                          label: 'Journey',
-                                          onTap: () => context.go('/family/journey'),
-                                          bgColor: cs.onPrimary
-                                              .withValues(alpha: 0.12),
-                                          fgColor: cs.onPrimary,
-                                          borderColor: cs.onPrimary
-                                              .withValues(alpha: 0.20),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          child: _expanded
+                              ? Padding(
+                                  padding:
+                                      const EdgeInsets.only(top: AppSpacing.sm),
+                                  child: Wrap(
+                                    spacing: AppSpacing.md,
+                                    runSpacing: AppSpacing.sm,
+                                    children: [
+                                      _FamilyQuickActionButton(
+                                        icon: Icons.school_rounded,
+                                        label: 'Education',
+                                        onTap: () =>
+                                            context.push('/family/education'),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
+                                      _FamilyQuickActionButton(
+                                        icon: Icons.notifications_rounded,
+                                        label: 'Alerts',
+                                        onTap: () =>
+                                            context.go('/family/alerts'),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
+                                      _FamilyQuickActionButton(
+                                        icon: Icons.chat_bubble_rounded,
+                                        label: 'Messages',
+                                        onTap: () => context.push('/family/messages'),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
+                                      _FamilyQuickActionButton(
+                                        icon: Icons.medical_information_rounded,
+                                        label: 'My Therapist',
+                                        onTap: () => context.push('/family/resources'),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
+                                      _FamilyQuickActionButton(
+                                        icon: Icons.favorite_rounded,
+                                        label: 'Health Tracker',
+                                        onTap: () =>
+                                            context.go('/family/health'),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
+                                      _FamilyQuickActionButton(
+                                        icon: Icons.add_circle_outline,
+                                        label: 'Log Health',
+                                        onTap: () =>
+                                            context.push('/family/add-health-log'),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
+                                      _FamilyQuickActionButton(
+                                        icon: Icons.emoji_events_rounded,
+                                        label: 'Journey',
+                                        onTap: () =>
+                                            context.go('/family/journey'),
+                                        bgColor: cs.onPrimary
+                                            .withValues(alpha: 0.12),
+                                        fgColor: cs.onPrimary,
+                                        borderColor: cs.onPrimary
+                                            .withValues(alpha: 0.20),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
       ],
     );
   }
@@ -608,7 +691,8 @@ class _FamilyQuickActionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
         constraints: const BoxConstraints(minHeight: 40),
         decoration: BoxDecoration(
           color: bgColor,
@@ -656,7 +740,8 @@ class _FamilyTodayPill extends StatelessWidget {
         ),
       ),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 7),
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 7),
         constraints: const BoxConstraints(minHeight: 40),
         decoration: BoxDecoration(
           color: cs.onPrimary.withValues(alpha: 0.12),
@@ -698,7 +783,8 @@ class _FamilyGreetingPill extends StatelessWidget {
             Transform.translate(offset: Offset((1 - t) * 6, 0), child: child),
       ),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 6),
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 6),
         constraints: const BoxConstraints(minHeight: 36),
         decoration: BoxDecoration(
           color: cs.onPrimary.withValues(alpha: 0.10),
@@ -758,15 +844,15 @@ class _QuickActionsGrid extends StatelessWidget {
             title: 'Messages',
             subtitle: 'Talk with your care team.',
             color: const Color(0xFF10B981),
-            onTap: () => context.push('/messages'),
+            onTap: () => context.push('/family/messages'),
           ),
           const SizedBox(width: AppSpacing.md),
           _QuickActionCard(
-            icon: Icons.folder_rounded,
-            title: 'Resources',
-            subtitle: 'Helpful tools and support.',
-            color: const Color(0xFF8B5CF6),
-            onTap: () => context.go('/family/resources'),
+            icon: Icons.medical_information_rounded,
+            title: 'My Therapist',
+            subtitle: 'Notes and resources from care team.',
+            color: const Color(0xFFEC4899),
+            onTap: () => context.push('/family/resources'),
           ),
         ],
       ),
@@ -902,8 +988,14 @@ class _WelcomeCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: allMilestonesCompleted
-                              ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                              : [const Color(0xFF2F80FF), const Color(0xFF1E5FBF)],
+                              ? [
+                                  const Color(0xFF10B981),
+                                  const Color(0xFF059669)
+                                ]
+                              : [
+                                  const Color(0xFF2F80FF),
+                                  const Color(0xFF1E5FBF)
+                                ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -945,12 +1037,13 @@ class _WelcomeCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            patientName.split(' ').first,
+                            'Patient Recovery Milestone',
                             style: context.textStyles.bodySmall?.copyWith(
                               color: isDark
-                                  ? Colors.white.withValues(alpha: 0.5)
-                                  : Colors.black.withValues(alpha: 0.5),
-                              fontSize: 12,
+                                  ? Colors.white.withValues(alpha: 0.6)
+                                  : Colors.black.withValues(alpha: 0.6),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
@@ -987,7 +1080,8 @@ class _WelcomeCard extends StatelessWidget {
                           color: isDark ? Colors.white : Colors.black,
                         ),
                       ),
-                      if (nextMilestone != null && nextMilestone!.dueDate != null) ...[
+                      if (nextMilestone != null &&
+                          nextMilestone!.dueDate != null) ...[
                         const SizedBox(height: 6),
                         Row(
                           children: [
@@ -1101,36 +1195,51 @@ class _RecoveryHeroCardState extends State<_RecoveryHeroCard> {
   }
 
   Map<String, dynamic> _getLatestVitals() {
+    // Return null values if no entries - UI will show "No data"
     if (widget.recentEntries.isEmpty) {
       return {
-        'heartRate': 72,
-        'systolic': 120,
-        'diastolic': 80,
-        'sleepQuality': 7,
-        'steps': 2450,
+        'heartRate': null,
+        'systolic': null,
+        'diastolic': null,
+        'sleepQuality': null,
+        'steps': null,
       };
     }
 
+    // Find the most recent value for each vital
     int? heartRate;
     int? systolic;
     int? diastolic;
     int? sleepQuality;
     int? steps;
 
-    for (final entry in widget.recentEntries) {
+    // Sort entries by date (most recent first) and find latest values
+    final sorted = List<TrackerEntry>.from(widget.recentEntries)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    for (final entry in sorted) {
       heartRate ??= entry.heartRate;
       systolic ??= entry.systolicBP;
       diastolic ??= entry.diastolicBP;
       sleepQuality ??= entry.sleepQuality;
       steps ??= entry.steps;
+
+      // Stop early if we have all values
+      if (heartRate != null &&
+          systolic != null &&
+          diastolic != null &&
+          sleepQuality != null &&
+          steps != null) {
+        break;
+      }
     }
 
     return {
-      'heartRate': heartRate ?? 72,
-      'systolic': systolic ?? 120,
-      'diastolic': diastolic ?? 80,
-      'sleepQuality': sleepQuality ?? 7,
-      'steps': steps ?? 2450,
+      'heartRate': heartRate,
+      'systolic': systolic,
+      'diastolic': diastolic,
+      'sleepQuality': sleepQuality,
+      'steps': steps,
     };
   }
 
@@ -1232,7 +1341,9 @@ class _VitalsPage extends StatelessWidget {
                 child: _VitalCard(
                   icon: Icons.favorite_rounded,
                   label: 'Heart Rate',
-                  value: '${vitals['heartRate']}',
+                  value: vitals['heartRate'] != null
+                      ? '${vitals['heartRate']}'
+                      : '--',
                   unit: 'bpm',
                   color: const Color(0xffef4444),
                 ),
@@ -1242,7 +1353,9 @@ class _VitalsPage extends StatelessWidget {
                 child: _VitalCard(
                   icon: Icons.nightlight_rounded,
                   label: 'Sleep',
-                  value: '${vitals['sleepQuality']}',
+                  value: vitals['sleepQuality'] != null
+                      ? '${vitals['sleepQuality']}'
+                      : '--',
                   unit: '/10',
                   color: const Color(0xff8b5cf6),
                 ),
@@ -1256,7 +1369,10 @@ class _VitalsPage extends StatelessWidget {
                 child: _VitalCard(
                   icon: Icons.monitor_heart_rounded,
                   label: 'Blood Pressure',
-                  value: '${vitals['systolic']}/${vitals['diastolic']}',
+                  value: (vitals['systolic'] != null &&
+                          vitals['diastolic'] != null)
+                      ? '${vitals['systolic']}/${vitals['diastolic']}'
+                      : '--',
                   unit: 'mmHg',
                   color: const Color(0xff10b981),
                 ),
@@ -1266,7 +1382,7 @@ class _VitalsPage extends StatelessWidget {
                 child: _VitalCard(
                   icon: Icons.directions_walk_rounded,
                   label: 'Steps',
-                  value: '${vitals['steps']}',
+                  value: vitals['steps'] != null ? '${vitals['steps']}' : '--',
                   unit: '',
                   color: const Color(0xff2f91ff),
                 ),
@@ -1625,7 +1741,7 @@ class _SchedulePageState extends State<_SchedulePage> {
 
   Widget _buildScheduleContent() {
     final weekDays =
-        List.generate(3, (i) => _selectedWeekStart.add(Duration(days: i)));
+        List.generate(7, (i) => _selectedWeekStart.add(Duration(days: i)));
     final today = DateTime.now();
 
     return SingleChildScrollView(
@@ -1684,10 +1800,22 @@ class _SchedulePageState extends State<_SchedulePage> {
   }
 
   List<Widget> _buildScheduleRows() {
+    // Build schedule data for the week
+    final weekDays = List.generate(7, (i) => _selectedWeekStart.add(Duration(days: i)));
+    final scheduleData = _buildScheduleData(weekDays);
+    
     final rows = <Widget>[];
-    final times = ['12AM', '1AM', '2AM', '3AM', '4AM', '5AM', '6AM', '7AM'];
-
-    for (var i = 0; i < times.length; i++) {
+    
+    // Generate all 24 hours
+    for (var hour = 0; hour < 24; hour++) {
+      final timeLabel = hour == 0 
+          ? '12AM'
+          : hour < 12
+              ? '${hour}AM'
+              : hour == 12
+                  ? '12PM'
+                  : '${hour - 12}PM';
+      
       rows.add(
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1695,163 +1823,203 @@ class _SchedulePageState extends State<_SchedulePage> {
             SizedBox(
               width: 50,
               child: Text(
-                times[i],
+                timeLabel,
                 style: const TextStyle(
                   color: Color(0xffa8a8ad),
                   fontSize: 11,
                 ),
               ),
             ),
-            Expanded(
-              child: Container(
-                height: 60,
-                margin: const EdgeInsets.only(bottom: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xff1a1a1d).withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: i == 0 || i == 5
-                    ? Container(
-                        margin: const EdgeInsets.all(4),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: i == 0
-                              ? const Color(0xffef4444)
-                              : const Color(0xff8b5cf6),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              i == 0 ? 'Advil' : 'Bowel',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (i == 5)
-                              const Text(
-                                'Joseph',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
+            ...weekDays.asMap().entries.map((entry) {
+              final dayIndex = entry.key;
+              final day = entry.value;
+              final dayKey = DateFormat('yyyy-MM-dd').format(day);
+              final activities = scheduleData[dayKey]?[hour] ?? [];
+              
+              return Expanded(
+                child: Container(
+                  height: 60,
+                  margin: EdgeInsets.only(
+                    left: dayIndex == 0 ? 0 : 4,
+                    bottom: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff1a1a1d).withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: activities.isNotEmpty
+                      ? Container(
+                          margin: const EdgeInsets.all(4),
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: _getActivityColor(activities.first['type'] as String),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                activities.first['name'] as String,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                          ],
-                        ),
-                      )
-                    : null,
-              ),
-            ),
-            Expanded(
-              child: Container(
-                height: 60,
-                margin: const EdgeInsets.only(left: 4, bottom: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xff1a1a1d).withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: i == 0 || i == 5
-                    ? Container(
-                        margin: const EdgeInsets.all(4),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: i == 0
-                              ? const Color(0xffef4444)
-                              : const Color(0xff8b5cf6),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              i == 0 ? 'Advil' : 'Bowel',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (i == 5)
-                              const Text(
-                                'Joseph',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
+                              if (activities.first['caregiver'] != null)
+                                Text(
+                                  activities.first['caregiver'] as String,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 9,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
-                      )
-                    : null,
-              ),
-            ),
-            Expanded(
-              child: Container(
-                height: 60,
-                margin: const EdgeInsets.only(left: 4, bottom: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xff1a1a1d).withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(6),
+                            ],
+                          ),
+                        )
+                      : null,
                 ),
-                child: i == 0 || i == 5
-                    ? Container(
-                        margin: const EdgeInsets.all(4),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: i == 0
-                              ? const Color(0xffef4444)
-                              : const Color(0xff8b5cf6),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              i == 0 ? 'Advil' : 'Bowel',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (i == 5)
-                              const Text(
-                                'Joseph',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
-                      )
-                    : null,
-              ),
-            ),
+              );
+            }),
           ],
         ),
       );
     }
 
     return rows;
+  }
+
+  Map<String, Map<int, List<Map<String, String?>>>> _buildScheduleData(List<DateTime> weekDays) {
+    final scheduleData = <String, Map<int, List<Map<String, String?>>>>{};
+    
+    // Initialize empty schedules for all days
+    for (final day in weekDays) {
+      final dayKey = DateFormat('yyyy-MM-dd').format(day);
+      scheduleData[dayKey] = {};
+    }
+    
+    // Add medications from patient
+    if (_patient != null && _patient!.medications.isNotEmpty) {
+      for (final med in _patient!.medications) {
+        for (final timeStr in med.times) {
+          // Parse time (e.g., "08:00" or "8:00 AM")
+          final hour = _parseHour(timeStr);
+          if (hour == null) continue;
+          
+          // Add to all 7 days of the week
+          for (final day in weekDays) {
+            final dayKey = DateFormat('yyyy-MM-dd').format(day);
+            scheduleData[dayKey]![hour] = [
+              {
+                'type': 'medication',
+                'name': med.name,
+                'caregiver': null,
+              }
+            ];
+          }
+        }
+      }
+    }
+    
+    // Add daily routines from blueprint
+    if (_blueprint != null && _blueprint!.dailyRoutines.isNotEmpty) {
+      for (final routine in _blueprint!.dailyRoutines) {
+        // Get caregiver name if assigned
+        String? caregiverName;
+        if (routine.assignedCaregiverId != null) {
+          final caregiver = _blueprint!.careTeam.firstWhere(
+            (c) => c.id == routine.assignedCaregiverId,
+            orElse: () => _blueprint!.careTeam.first,
+          );
+          caregiverName = caregiver.name.split(' ').first; // First name only
+        }
+        
+        for (final timeStr in routine.timesOfDay) {
+          final hour = _parseHour(timeStr);
+          if (hour == null) continue;
+          
+          // Check which days this routine applies to
+          final daysToAdd = routine.daysPerformed.isEmpty
+              ? weekDays // If no specific days, add to all days
+              : weekDays.where((day) {
+                  final dayName = DateFormat('EEEE').format(day).toLowerCase();
+                  return routine.daysPerformed.any((d) => d.toLowerCase() == dayName);
+                }).toList();
+          
+          for (final day in daysToAdd) {
+            final dayKey = DateFormat('yyyy-MM-dd').format(day);
+            // Don't overwrite medications
+            if (scheduleData[dayKey]![hour] == null || scheduleData[dayKey]![hour]!.isEmpty) {
+              scheduleData[dayKey]![hour] = [
+                {
+                  'type': routine.type,
+                  'name': _getRoutineDisplayName(routine.type),
+                  'caregiver': caregiverName,
+                }
+              ];
+            }
+          }
+        }
+      }
+    }
+    
+    return scheduleData;
+  }
+
+  int? _parseHour(String timeStr) {
+    try {
+      // Handle "HH:MM" format (24-hour)
+      if (timeStr.contains(':') && !timeStr.contains('AM') && !timeStr.contains('PM')) {
+        final parts = timeStr.split(':');
+        return int.parse(parts[0]);
+      }
+      
+      // Handle "H:MM AM/PM" or "HH:MM AM/PM" format
+      if (timeStr.contains('AM') || timeStr.contains('PM')) {
+        final isPM = timeStr.contains('PM');
+        final timePart = timeStr.replaceAll('AM', '').replaceAll('PM', '').trim();
+        final parts = timePart.split(':');
+        var hour = int.parse(parts[0]);
+        
+        if (isPM && hour != 12) hour += 12;
+        if (!isPM && hour == 12) hour = 0;
+        
+        return hour;
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('[SchedulePage] Error parsing time $timeStr: $e');
+      return null;
+    }
+  }
+
+  String _getRoutineDisplayName(String type) {
+    switch (type.toLowerCase()) {
+      case 'bowel': return 'Bowel Program';
+      case 'bladder': return 'Bladder Care';
+      case 'skin_check': return 'Skin Check';
+      case 'therapy': return 'Therapy';
+      case 'nutrition': return 'Meal Time';
+      default: return type;
+    }
+  }
+
+  Color _getActivityColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'medication': return const Color(0xffef4444); // Red
+      case 'bowel': return const Color(0xff8b5cf6); // Purple
+      case 'bladder': return const Color(0xff3b82f6); // Blue
+      case 'skin_check': return const Color(0xff10b981); // Green
+      case 'therapy': return const Color(0xfff59e0b); // Orange
+      case 'nutrition': return const Color(0xffec4899); // Pink
+      default: return const Color(0xff6b7280); // Gray
+    }
   }
 }
 
@@ -2221,9 +2389,8 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
             source.contains('nlm');
       }).toList();
 
-      // Load local resources (organizations and hospitals)
-      final organizations = await _organizationService.getAllOrganizations();
-      final hospitals = await _hospitalService.getHospitalsByMetro('stl');
+      // Don't load organizations - they're not resources
+      // Don't load generic hospitals - should be milestone-specific
 
       // Load VR agencies if applicable based on patient conditions
       List<VRAgency> vrAgencies = [];
@@ -2257,8 +2424,8 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
         _stats = stats;
         _recentEntries = recentEntries;
         _educationResources = educationList;
-        _organizations = organizations;
-        _hospitals = hospitals;
+        _organizations = []; // Remove organizations from resources
+        _hospitals = []; // Remove generic hospitals - should be milestone-specific
         _vrAgencies = vrAgencies;
         _showVRAgencies = showVR;
         _loading = false;
@@ -2356,46 +2523,11 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
                           _MilestoneCard(milestone: widget.nextMilestone!),
                           const SizedBox(height: AppSpacing.xl),
                         ],
-                        // Local Resources Section
-                        _SectionHeader(
-                          icon: Icons.location_city_rounded,
-                          title: 'Local Resources',
-                          color: const Color(0xFF10B981),
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        if (_organizations.isEmpty &&
-                            _hospitals.isEmpty &&
-                            !_showVRAgencies)
-                          _EmptyState(message: 'No local resources available')
-                        else ...[
-                          if (_organizations.isNotEmpty) ...[
-                            ..._organizations
-                                .take(10)
-                                .map((org) => _LocalResourceCard(
-                                      icon: Icons.business_rounded,
-                                      title: org.name,
-                                      subtitle: org.slug.isNotEmpty
-                                          ? org.slug
-                                          : 'Community Organization',
-                                      type: 'Organization',
-                                      color: const Color(0xFF10B981),
-                                    )),
-                          ],
-                          if (_hospitals.isNotEmpty) ...[
-                            ..._hospitals
-                                .take(10)
-                                .map((hospital) => _LocalResourceCard(
-                                      icon: Icons.local_hospital_rounded,
-                                      title: hospital.name,
-                                      subtitle: hospital.city ??
-                                          'Healthcare Facility',
-                                      type: 'Hospital',
-                                      color: const Color(0xFF2F80FF),
-                                    )),
-                          ],
-                        ],
-                        const SizedBox(height: AppSpacing.xl),
-                        // Vocational Rehabilitation Agencies Section (if applicable)
+                        // Milestone-specific resources would go here
+                        // This section is intentionally removed - resources should be
+                        // personalized to the current milestone, not generic organizations
+                        
+                        // Vocational Rehabilitation Agencies (filtered by patient location)
                         if (_showVRAgencies && _vrAgencies.isNotEmpty) ...[
                           _SectionHeader(
                             icon: Icons.work_rounded,
@@ -2403,8 +2535,9 @@ class _LearnMoreSheetState extends State<_LearnMoreSheet> {
                             color: const Color(0xFFEF4444),
                           ),
                           const SizedBox(height: AppSpacing.md),
-                          ..._vrAgencies
-                              .map((agency) => _VRAgencyCard(agency: agency)),
+                          // Only show the first VR agency (patient's state)
+                          if (_vrAgencies.isNotEmpty)
+                            _VRAgencyCard(agency: _vrAgencies.first),
                           const SizedBox(height: AppSpacing.xl),
                         ],
                         // NIH & MedlinePlus Education Resources ONLY
@@ -3018,6 +3151,280 @@ class _ContactButton extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PatientMedicationsSection extends StatelessWidget {
+  final String patientName;
+  final List<Medication> medications;
+  final bool isExpanded;
+  final VoidCallback onToggleExpand;
+
+  const _PatientMedicationsSection({
+    required this.patientName,
+    required this.medications,
+    required this.isExpanded,
+    required this.onToggleExpand,
+  });
+
+  String _getTimeOfDayLabel(String time) {
+    final parts = time.split(':');
+    if (parts.length != 2) return time;
+    final hour = int.tryParse(parts[0]) ?? 0;
+    final minute = int.tryParse(parts[1]) ?? 0;
+
+    if (hour == 8 && minute == 0) return 'Morning';
+    if (hour == 12 && minute == 0) return 'Noon';
+    if (hour == 20 && minute == 0) return 'Night';
+
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+    return '$displayHour:${minute.toString().padLeft(2, '0')} $period';
+  }
+
+  IconData _getTimeIcon(String time) {
+    final parts = time.split(':');
+    if (parts.length != 2) return Icons.schedule;
+    final hour = int.tryParse(parts[0]) ?? 0;
+
+    if (hour >= 5 && hour < 12) return Icons.wb_sunny_outlined;
+    if (hour >= 12 && hour < 17) return Icons.light_mode_outlined;
+    return Icons.nightlight_outlined;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$patientName\'s Medications',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          SizedBox(height: AppSpacing.xs),
+          if (medications.isEmpty)
+            Card(
+              child: Padding(
+                padding: AppSpacing.paddingMd,
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.medication_outlined, color: cs.primary),
+                    ),
+                    SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'No medications added',
+                            style: context.textStyles.titleSmall?.semiBold,
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            '$patientName hasn\'t added any medications yet.',
+                            style: context.textStyles.bodyMedium
+                                ?.withColor(cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Card(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        cs.primary.withValues(alpha: 0.04),
+                        cs.tertiary.withValues(alpha: 0.04),
+                      ],
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      InkWell(
+                        onTap: onToggleExpand,
+                        child: Padding(
+                          padding: AppSpacing.paddingSm,
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: cs.primaryContainer,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(Icons.medication,
+                                    color: cs.primary, size: 20),
+                              ),
+                              SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${medications.length} medication${medications.length == 1 ? '' : 's'}',
+                                      style: context
+                                          .textStyles.titleSmall?.semiBold,
+                                    ),
+                                    if (!isExpanded)
+                                      Text(
+                                        medications
+                                            .map((m) => m.name)
+                                            .join(', '),
+                                        style: context.textStyles.labelMedium
+                                            ?.withColor(cs.onSurfaceVariant),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              AnimatedRotation(
+                                turns: isExpanded ? 0.5 : 0,
+                                duration: const Duration(milliseconds: 200),
+                                child: Icon(Icons.keyboard_arrow_down,
+                                    color: cs.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      AnimatedCrossFade(
+                        firstChild: const SizedBox.shrink(),
+                        secondChild: Column(
+                          children: [
+                            const Divider(height: 1),
+                            ...medications.map((med) => _PatientMedicationTile(
+                                  medication: med,
+                                  getTimeLabel: _getTimeOfDayLabel,
+                                  getTimeIcon: _getTimeIcon,
+                                )),
+                          ],
+                        ),
+                        crossFadeState: isExpanded
+                            ? CrossFadeState.showSecond
+                            : CrossFadeState.showFirst,
+                        duration: const Duration(milliseconds: 200),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PatientMedicationTile extends StatelessWidget {
+  final Medication medication;
+  final String Function(String) getTimeLabel;
+  final IconData Function(String) getTimeIcon;
+
+  const _PatientMedicationTile({
+    required this.medication,
+    required this.getTimeLabel,
+    required this.getTimeIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: cs.secondaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.medication_liquid, color: cs.secondary, size: 18),
+          ),
+          SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  medication.name,
+                  style: context.textStyles.titleSmall?.semiBold,
+                ),
+                if (medication.dosage != null && medication.dosage!.isNotEmpty)
+                  Text(
+                    medication.dosage!,
+                    style: context.textStyles.bodySmall
+                        ?.withColor(cs.onSurfaceVariant),
+                  ),
+                if (medication.times.isNotEmpty) ...[
+                  SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: medication.times.map((time) {
+                      final label = getTimeLabel(time);
+                      final icon = getTimeIcon(time);
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 14, color: cs.onSurfaceVariant),
+                            SizedBox(width: 4),
+                            Text(
+                              label,
+                              style: context.textStyles.labelSmall
+                                  ?.withColor(cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+                if (medication.notes != null &&
+                    medication.notes!.isNotEmpty) ...[
+                  SizedBox(height: 4),
+                  Text(
+                    medication.notes!,
+                    style: context.textStyles.bodySmall
+                        ?.withColor(cs.onSurfaceVariant),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -7,7 +7,6 @@ import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/family_service.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/theme.dart';
-import 'package:wellspring/widgets/animated_blobs.dart';
 
 class FamilyOnboardingScreen extends StatefulWidget {
   const FamilyOnboardingScreen({super.key});
@@ -19,11 +18,11 @@ class FamilyOnboardingScreen extends StatefulWidget {
 class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
   final _pageController = PageController();
   final _codeController = TextEditingController();
+  final _nameController = TextEditingController();
   int _currentPage = 0;
   String _selectedRelationship = 'Parent';
   bool _loading = false;
   String? _error;
-  bool _hasExistingConnection = false;
 
   final _familyService = FamilyService();
   final _userService = UserService();
@@ -41,34 +40,21 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
   @override
   void initState() {
     super.initState();
-    _checkExistingConnections();
-  }
-
-  Future<void> _checkExistingConnections() async {
-    try {
-      final user = await _userService.getCurrentUser();
-      if (user != null) {
-        final connections = await _familyService.getConnectionsForFamily(user.id);
-        if (connections.isNotEmpty) {
-          debugPrint('[FamilyOnboarding] Found ${connections.length} existing connections, skipping patient code entry');
-          setState(() => _hasExistingConnection = true);
-        }
-      }
-    } catch (e) {
-      debugPrint('[FamilyOnboarding] Error checking existing connections: $e');
-    }
+    // Don't check for existing connections during onboarding
+    // Always show all pages to ensure proper first-time setup
+    // Users can manage connections later from the dashboard
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _codeController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   void _nextPage() {
-    final maxPages = _hasExistingConnection ? 2 : 4;
-    if (_currentPage < maxPages - 1) {
+    if (_currentPage < 3) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -78,6 +64,13 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
 
   Future<void> _connectToPatient() async {
     final code = _codeController.text.trim();
+    final name = _nameController.text.trim();
+    
+    if (name.isEmpty) {
+      setState(() => _error = 'Please enter your name');
+      return;
+    }
+    
     if (code.isEmpty) {
       setState(() => _error = 'Please enter a patient code');
       return;
@@ -107,6 +100,10 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
       }
 
       debugPrint('[FamilyOnboarding] ✓ Family member ID: ${familyUser.id}');
+      
+      // Update family member's name
+      await _userService.updateUserProfile(name: name);
+      debugPrint('[FamilyOnboarding] ✓ Updated family member name to: $name');
 
       // Create connection
       await _familyService.connectToPatient(
@@ -173,11 +170,9 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0B0F14) : const Color(0xFFF8FAFC),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (isDark) const AnimatedBlobs(),
           SafeArea(
             child: Column(
               children: [
@@ -195,15 +190,14 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
                           Expanded(
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(_hasExistingConnection ? 2 : 4, (index) {
+                              children: List.generate(4, (index) {
                                 final isActive = index == _currentPage;
                                 final isPast = index < _currentPage;
-                                final maxPages = _hasExistingConnection ? 2 : 4;
                                 return Container(
                                   width: 32,
                                   height: 4,
                                   margin: EdgeInsets.only(
-                                    right: index < maxPages - 1 ? AppSpacing.xs : 0,
+                                    right: index < 3 ? AppSpacing.xs : 0,
                                   ),
                                   decoration: BoxDecoration(
                                     color: isActive || isPast
@@ -239,35 +233,26 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
                     controller: _pageController,
                     physics: const NeverScrollableScrollPhysics(),
                     onPageChanged: (page) => setState(() => _currentPage = page),
-                    children: _hasExistingConnection 
-                        ? [
-                            // Skip welcome and connect pages for returning users
-                            _PermissionsPage(onNext: _nextPage),
-                            _TutorialPage(
-                              onComplete: _completeOnboarding,
-                              loading: _loading,
-                              error: _error,
-                            ),
-                          ]
-                        : [
-                            _WelcomePage(onNext: _nextPage),
-                            _ConnectPage(
-                              codeController: _codeController,
-                              selectedRelationship: _selectedRelationship,
-                              relationships: _relationships,
-                              onRelationshipChanged: (value) =>
-                                  setState(() => _selectedRelationship = value),
-                              onConnect: _connectToPatient,
-                              loading: _loading,
-                              error: _error,
-                            ),
-                            _PermissionsPage(onNext: _nextPage),
-                            _TutorialPage(
-                              onComplete: _completeOnboarding,
-                              loading: _loading,
-                              error: _error,
-                            ),
-                          ],
+                    children: [
+                      _WelcomePage(onNext: _nextPage),
+                      _ConnectPage(
+                        nameController: _nameController,
+                        codeController: _codeController,
+                        selectedRelationship: _selectedRelationship,
+                        relationships: _relationships,
+                        onRelationshipChanged: (value) =>
+                            setState(() => _selectedRelationship = value),
+                        onConnect: _connectToPatient,
+                        loading: _loading,
+                        error: _error,
+                      ),
+                      _PermissionsPage(onNext: _nextPage),
+                      _TutorialPage(
+                        onComplete: _completeOnboarding,
+                        loading: _loading,
+                        error: _error,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -338,6 +323,7 @@ class _WelcomePage extends StatelessWidget {
 
 class _ConnectPage extends StatelessWidget {
   const _ConnectPage({
+    required this.nameController,
     required this.codeController,
     required this.selectedRelationship,
     required this.relationships,
@@ -347,6 +333,7 @@ class _ConnectPage extends StatelessWidget {
     this.error,
   });
 
+  final TextEditingController nameController;
   final TextEditingController codeController;
   final String selectedRelationship;
   final List<String> relationships;
@@ -404,6 +391,19 @@ class _ConnectPage extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
           ],
+
+          // Family member name field
+          TextField(
+            controller: nameController,
+            keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              labelText: 'Your Name',
+              hintText: 'Enter your full name',
+              prefixIcon: Icon(Icons.person, color: cs.primary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
 
           // Patient code field
           TextField(

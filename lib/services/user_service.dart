@@ -879,44 +879,30 @@ class UserService {
           
           // SECOND: Check family_patient_links table (partner web portal connections)
           try {
-            // First, get the family_member.id by looking up via auth_user_id
-            final familyMemberData = await _supabase
-                .from('family_members')
-                .select('id')
-                .eq('auth_user_id', authUser.id)
-                .maybeSingle();
-            
-            if (familyMemberData != null) {
-              final familyMemberId = familyMemberData['id'] as String;
-              debugPrint('UserService.isOnboardingCompleted: Found family_member record: $familyMemberId');
-              
-              // Check if they have any patient links
-              final links = await _supabase
-                  .from('family_patient_links')
-                  .select('id, patient_id')
-                  .eq('family_member_id', familyMemberId)
-                  .limit(1);
-              
-              if (links.isNotEmpty) {
-                debugPrint('UserService.isOnboardingCompleted: ✓ Found existing patient connection from partner web!');
-                debugPrint('UserService.isOnboardingCompleted: → Auto-completing onboarding for family user');
-                
-                // Auto-complete their onboarding since they're already connected
-                await _supabase
-                    .from('users')
-                    .update({'onboarding_completed': true})
-                    .eq('id', userId);
-                
-                _cachedOnboarding = true;
-                _cachedOnboardingAt = DateTime.now();
-                _cachedOnboardingUserId = authUser.id;
-                _cachedOnboardingRole = lastActiveRole;
-                return true;
-              } else {
-                debugPrint('UserService.isOnboardingCompleted: No patient connections found in Supabase');
-              }
+            // NEW SCHEMA: family_member_id is auth.users(id).
+            final links = await _supabase
+                .from('family_patient_links')
+                .select('id, patient_id')
+                .eq('family_member_id', authUser.id)
+                .limit(1);
+
+            if (links.isNotEmpty) {
+              debugPrint('UserService.isOnboardingCompleted: ✓ Found existing patient connection from partner web!');
+              debugPrint('UserService.isOnboardingCompleted: → Auto-completing onboarding for family user');
+
+              // Auto-complete their onboarding since they're already connected
+              await _supabase
+                  .from('users')
+                  .update({'onboarding_completed': true})
+                  .eq('id', userId);
+
+              _cachedOnboarding = true;
+              _cachedOnboardingAt = DateTime.now();
+              _cachedOnboardingUserId = authUser.id;
+              _cachedOnboardingRole = lastActiveRole;
+              return true;
             } else {
-              debugPrint('UserService.isOnboardingCompleted: No family_member record found');
+              debugPrint('UserService.isOnboardingCompleted: No patient connections found in Supabase');
             }
           } catch (e) {
             debugPrint('UserService.isOnboardingCompleted: Error checking family_patient_links: $e');
@@ -970,6 +956,30 @@ class UserService {
       _cachedOnboarding = true;
       _cachedOnboardingAt = DateTime.now();
       _cachedOnboardingUserId = user.id;
+
+      // CRITICAL FIX: Ensure patient code is generated for patient users
+      if (user.role == models.UserRole.patient && 
+          (user.patientCode == null || user.patientCode!.isEmpty)) {
+        debugPrint('UserService.completeOnboarding: Patient code missing, generating now...');
+        
+        // Try to get hospital/organization from preferences
+        final hospitalId = user.preferences[_prefHospitalId] as String?;
+        final organizationId = user.preferences['organizationId'] as String?;
+        
+        if (hospitalId != null || organizationId != null) {
+          try {
+            await ensurePatientCodeForCurrentUser(
+              hospitalId: hospitalId,
+              organizationId: organizationId,
+            );
+            debugPrint('UserService.completeOnboarding: Patient code generated successfully');
+          } catch (e) {
+            debugPrint('UserService.completeOnboarding: Failed to generate patient code (non-fatal): $e');
+          }
+        } else {
+          debugPrint('UserService.completeOnboarding: WARNING - Cannot generate patient code, no hospital/organization set');
+        }
+      }
 
       await _trackMembershipMilestones(user.id);
     } catch (e) {
@@ -1686,13 +1696,15 @@ class UserService {
       // Clear pending_oauth_role after reading it
       await prefs.remove('pending_oauth_role');
       
+      final displayName = (authUser.userMetadata?['full_name'] as String?)?.trim().isNotEmpty == true
+            ? (authUser.userMetadata?['full_name'] as String)
+            : (nameFromEmail?.isNotEmpty == true ? nameFromEmail : 'Member');
+      
       final profileMap = {
         'id': authUser.id,
         'auth_user_id': authUser.id,
         'role': lastActiveRole, // CRITICAL: Include role when provisioning
-        'name': (authUser.userMetadata?['full_name'] as String?)?.trim().isNotEmpty == true
-            ? (authUser.userMetadata?['full_name'] as String)
-            : (nameFromEmail?.isNotEmpty == true ? nameFromEmail : 'Member'),
+        'name': displayName,
         'email': authUser.email ?? 'user-${authUser.id}@adaptly.app',
         'profile_image_url': authUser.userMetadata?['avatar_url'],
         'onboarding_completed': false,

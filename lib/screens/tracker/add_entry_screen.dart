@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:wellspring/models/tracker_entry.dart';
 import 'package:wellspring/models/pain_detail.dart';
+import 'package:wellspring/models/recovery_blueprint.dart';
 import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/tracker_service.dart';
 import 'package:wellspring/services/health_service.dart';
+import 'package:wellspring/services/recovery_blueprint_service.dart';
 import 'package:wellspring/theme.dart';
 import 'package:intl/intl.dart';
 import 'package:wellspring/widgets/skeletons.dart';
@@ -27,6 +29,7 @@ class AddEntryScreen extends StatefulWidget {
 class _AddEntryScreenState extends State<AddEntryScreen> {
   final _trackerService = TrackerService();
   final _healthService = HealthService();
+  final _blueprintService = RecoveryBlueprintService();
   final _notesController = TextEditingController();
   final _sysController = TextEditingController();
   final _diaController = TextEditingController();
@@ -36,6 +39,8 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   final _tempController = TextEditingController();
   bool _saving = false;
   bool _importingHealth = false;
+  RecoveryBlueprint? _blueprint;
+  bool _loadingBlueprint = true;
 
   DateTime _selectedDate = DateTime.now();
   int? _painLevel;
@@ -131,6 +136,7 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   @override
   void initState() {
     super.initState();
+    _loadBlueprint();
     // Prefill values when editing
     final e = widget.existing;
     if (e != null) {
@@ -232,10 +238,83 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     return merged;
   }
 
+  Future<void> _loadBlueprint() async {
+    final userId = context.read<UserProvider>().currentUser?.id;
+    if (userId == null) {
+      setState(() => _loadingBlueprint = false);
+      return;
+    }
+    try {
+      final blueprint = await _blueprintService.getByUserId(userId);
+      if (mounted) {
+        setState(() {
+          _blueprint = blueprint;
+          _loadingBlueprint = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('AddEntryScreen._loadBlueprint error: $e');
+      if (mounted) setState(() => _loadingBlueprint = false);
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _maybeLoadSuggestions();
+  }
+
+  bool _shouldShowSection(String sectionType) {
+    // Always show core sections
+    if (['pain', 'mood', 'vitals', 'medications', 'notes'].contains(sectionType)) {
+      return true;
+    }
+
+    final user = context.read<UserProvider>().currentUser;
+    final conditions = user?.conditions ?? [];
+
+    // Show bladder/bowel for spinal cord injury patients
+    if (['bladder', 'bowel'].contains(sectionType)) {
+      return conditions.any((c) => 
+        c.toLowerCase().contains('spinal') || 
+        c.toLowerCase().contains('sci') ||
+        c.toLowerCase().contains('neurogenic'));
+    }
+
+    // Show spasm tracking for certain neurological conditions
+    if (sectionType == 'spasm') {
+      return conditions.any((c) => 
+        c.toLowerCase().contains('spinal') || 
+        c.toLowerCase().contains('sci') ||
+        c.toLowerCase().contains('multiple sclerosis') ||
+        c.toLowerCase().contains('cerebral palsy'));
+    }
+
+    // Show activities for all rehabilitation patients
+    if (sectionType == 'activities') {
+      return _blueprint?.patientProfile.recoveryPhase != null;
+    }
+
+    return true; // Show by default
+  }
+
+  String _getPersonalizedTitle() {
+    final user = context.read<UserProvider>().currentUser;
+    final isEditing = widget.existing != null;
+    
+    if (isEditing) return 'Edit Entry';
+    
+    final hour = DateTime.now().hour;
+    String greeting;
+    if (hour < 12) {
+      greeting = 'Morning Check-In';
+    } else if (hour < 17) {
+      greeting = 'Afternoon Update';
+    } else {
+      greeting = 'Evening Log';
+    }
+    
+    return greeting;
   }
 
   Future<void> _importAppleHealthData() async {
@@ -461,9 +540,11 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<UserProvider>().currentUser;
+    
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existing == null ? 'Add Entry' : 'Edit Entry'),
+        title: Text(_getPersonalizedTitle()),
         actions: [
           TextButton(
             onPressed: _saving ? null : _saveEntry,
@@ -477,11 +558,17 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: _loadingBlueprint
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: AppSpacing.paddingLg,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (user != null) ...[
+              _buildWelcomeCard(user.name),
+              SizedBox(height: AppSpacing.lg),
+            ],
             InkWell(
               onTap: () async {
                 final date = await showDatePicker(
@@ -536,8 +623,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 ),
               ),
             SizedBox(height: AppSpacing.lg),
-            _buildSection(
-              'Pain Level',
+            if (_shouldShowSection('pain'))
+              _buildSection(
+                'Pain Level',
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 12,
@@ -560,14 +648,17 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
               ),
             ),
 
-            // Pain mapping widget
-            PainMappingWidget(
-              initialPainMap: _painMap,
-              onChanged: (painMap) => setState(() => _painMap = painMap),
-            ),
-            SizedBox(height: AppSpacing.lg),
-            _buildSection(
-              'Mood',
+            if (_shouldShowSection('pain')) ...{
+              // Pain mapping widget
+              PainMappingWidget(
+                initialPainMap: _painMap,
+                onChanged: (painMap) => setState(() => _painMap = painMap),
+              ),
+              SizedBox(height: AppSpacing.lg),
+            },
+            if (_shouldShowSection('mood'))
+              _buildSection(
+                'Mood',
               Wrap(
                 spacing: AppSpacing.sm,
                 children: _moodOptions.map((emoji) {
@@ -589,30 +680,34 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                   );
                 }).toList(),
               ),
-            ),
-            _buildSection(
-              'Bladder Management',
+              ),
+            if (_shouldShowSection('bladder'))
+              _buildSection(
+                'Bladder Management',
               _BladderSection(
                 bladderSuccess: _bladderSuccess,
                 onChanged: (value) => setState(() => _bladderSuccess = value),
               ),
-            ),
-            _buildSection(
-              'Bowel Program',
+              ),
+            if (_shouldShowSection('bowel'))
+              _buildSection(
+                'Bowel Program',
               _BowelSection(
                 bowelProgram: _bowelProgram,
                 onChanged: (value) => setState(() => _bowelProgram = value),
               ),
-            ),
-            _buildSection(
-              'Spasm Tracking',
+              ),
+            if (_shouldShowSection('spasm'))
+              _buildSection(
+                'Spasm Tracking',
               _SpasmSection(
                 spasmFrequency: _spasmFrequency,
                 onChanged: (value) => setState(() => _spasmFrequency = value),
               ),
             ),
-            _buildSection(
-              'Sleep Hours (1-10)',
+            if (_shouldShowSection('sleep'))
+              _buildSection(
+                'Sleep Hours (1-10)',
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 10,
@@ -634,8 +729,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 ),
               ),
             ),
-            _buildSection(
-              'Energy Level (1-10)',
+            if (_shouldShowSection('energy'))
+              _buildSection(
+                'Energy Level (1-10)',
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 10,
@@ -657,8 +753,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 ),
               ),
             ),
-            _buildSection(
-              'Blood Pressure',
+            if (_shouldShowSection('vitals'))
+              _buildSection(
+                'Blood Pressure',
               Column(
                 children: [
                   Row(
@@ -713,8 +810,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 ],
               ),
             ),
-            _buildSection(
-              'Steps',
+            if (_shouldShowSection('vitals'))
+              _buildSection(
+                'Steps',
               TextField(
                 controller: _stepsController,
                 decoration: InputDecoration(
@@ -729,8 +827,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                     setState(() => _steps = int.tryParse(value)),
               ),
             ),
-            _buildSection(
-              'Weight & Temperature',
+            if (_shouldShowSection('vitals'))
+              _buildSection(
+                'Weight & Temperature',
               Column(
                 children: [
                   TextField(
@@ -765,8 +864,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 ],
               ),
             ),
-            _buildSection(
-              'Medications',
+            if (_shouldShowSection('medications'))
+              _buildSection(
+                'Medications',
               _TagWithDetailsSection(
                 kindLabel: 'Medication',
                 items: _medications,
@@ -820,8 +920,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 },
               ),
             ),
-            _buildSection(
-              'Symptoms',
+            if (_shouldShowSection('symptoms'))
+              _buildSection(
+                'Symptoms',
               _TagWithDetailsSection(
                 kindLabel: 'Symptom',
                 items: _symptoms,
@@ -872,8 +973,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 },
               ),
             ),
-            _buildSection(
-              'Triggers',
+            if (_shouldShowSection('triggers'))
+              _buildSection(
+                'Triggers',
               _TagWithDetailsSection(
                 kindLabel: 'Trigger',
                 items: _triggers,
@@ -921,8 +1023,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 },
               ),
             ),
-            _buildSection(
-              'Activities',
+            if (_shouldShowSection('activities'))
+              _buildSection(
+                'Activities',
               _TagWithDetailsSection(
                 kindLabel: 'Activity',
                 items: _activities,
@@ -970,8 +1073,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 },
               ),
             ),
-            _buildSection(
-              'Notes',
+            if (_shouldShowSection('notes'))
+              _buildSection(
+                'Notes',
               TextField(
                 controller: _notesController,
                 decoration: InputDecoration(
@@ -998,6 +1102,109 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
           SizedBox(height: AppSpacing.lg),
         ],
       );
+
+  Widget _buildWelcomeCard(String userName) {
+    final cs = Theme.of(context).colorScheme;
+    final firstName = userName.split(' ').first;
+    final phase = _blueprint?.patientProfile.recoveryPhase;
+    
+    String subtitle = 'Track your progress for today';
+    if (phase != null) {
+      subtitle = 'Tracking your ${phase.label.toLowerCase()} recovery';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: AppSpacing.paddingLg,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.primaryContainer,
+            cs.secondaryContainer,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: cs.primary.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.edit_note_rounded,
+                  color: cs.primary,
+                  size: 28,
+                ),
+              ),
+              SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hi, $firstName!',
+                      style: context.textStyles.titleLarge?.semiBold.withColor(
+                        cs.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: context.textStyles.bodyMedium?.withColor(
+                        cs.onPrimaryContainer.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_blueprint != null && _blueprint!.patientProfile.therapyGoals.isNotEmpty) ...{
+            SizedBox(height: AppSpacing.md),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surface.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.flag_outlined,
+                    size: 18,
+                    color: cs.primary,
+                  ),
+                  SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Today\'s focus: ${_blueprint!.patientProfile.therapyGoals.first}',
+                      style: context.textStyles.bodySmall?.semiBold.withColor(
+                        cs.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          },
+        ],
+      ),
+    );
+  }
 }
 
 class _ChipInputField extends StatefulWidget {

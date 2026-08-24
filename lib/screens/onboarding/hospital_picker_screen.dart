@@ -7,7 +7,6 @@ import 'package:wellspring/services/organization_service.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/widgets/skeletons.dart';
-import 'package:wellspring/widgets/animated_blobs.dart';
 import 'package:wellspring/theme.dart';
 
 /// A lightweight one-step screen to choose a hospital (St. Louis area)
@@ -103,13 +102,8 @@ class _HospitalPickerScreenState extends State<HospitalPickerScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Use a green-forward tint for this page (requested), while still staying theme-driven.
-    // `tertiary` is our success/accent channel in this design system.
-    final greenTint = cs.tertiary;
 
     return GlassyScaffold(
-      // A slightly stronger tint so light mode doesn't read as a blank white page.
-      backgroundColor: isDark ? null : greenTint.withValues(alpha: 0.18),
       appBar: AppBar(
         title: const Text('Choose your organization'),
         backgroundColor: Colors.transparent,
@@ -117,29 +111,7 @@ class _HospitalPickerScreenState extends State<HospitalPickerScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Keep parity with the rest of onboarding: subtle animated color texture.
-          const AnimatedBlobs(),
-          if (!isDark)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        greenTint.withValues(alpha: 0.26),
-                        cs.background,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          Padding(
+      body: Padding(
             padding: AppSpacing.paddingLg,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,8 +244,6 @@ class _HospitalPickerScreenState extends State<HospitalPickerScreen> {
               ],
             ),
           ),
-        ],
-      ),
     );
   }
 }

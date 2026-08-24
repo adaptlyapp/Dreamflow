@@ -9,7 +9,6 @@ import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/recovery_blueprint_service.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/theme.dart';
-import 'package:wellspring/widgets/animated_blobs.dart';
 
 class RecoveryBlueprintWizard extends StatefulWidget {
   final RecoveryBlueprint? existing;
@@ -244,11 +243,7 @@ class _RecoveryBlueprintWizardState extends State<RecoveryBlueprintWizard> {
         backgroundColor: cs.surface.withValues(alpha: 0.65),
         title: const Text('Recovery Blueprint Setup'),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const AnimatedBlobs(),
-          Column(
+      body: Column(
             children: [
               SafeArea(
                 bottom: false,
@@ -312,8 +307,6 @@ class _RecoveryBlueprintWizardState extends State<RecoveryBlueprintWizard> {
               ),
             ],
           ),
-        ],
-      ),
     );
   }
 

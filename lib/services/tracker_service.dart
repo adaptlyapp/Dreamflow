@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wellspring/models/tracker_entry.dart';
+import 'package:wellspring/models/user.dart';
 import 'package:wellspring/services/audit_log_service.dart';
 import 'package:wellspring/services/achievement_service.dart';
 import 'package:wellspring/services/family_service.dart';
@@ -231,21 +232,53 @@ class TrackerService {
       }
       
       // Check if family members should be notified about alerts
-      _checkFamilyAlerts(entry.userId);
+      _checkFamilyAlerts(entry.userId, entry);
     } catch (e) {
       debugPrint('TrackerService.addEntry error: $e');
       rethrow;
     }
   }
   
-  Future<void> _checkFamilyAlerts(String userId) async {
+  Future<void> _checkFamilyAlerts(String userId, TrackerEntry entry) async {
     try {
       // Get patient info
       final user = await UserService().getUserById(userId);
       if (user == null) return;
       
+      // Get current user to check if they're a family member
+      // Only family members should receive family alerts
+      final userService = UserService();
+      final currentUser = await userService.getCurrentUser();
+      
+      // Only proceed if current user is a family member
+      // (They are monitoring health data for this patient)
+      if (currentUser?.role != UserRole.family) {
+        debugPrint(
+            'TrackerService._checkFamilyAlerts: Current user is not a family member, skipping family alerts');
+        return;
+      }
+      
+      // Build a summary of the logged entry
+      final summaryParts = <String>[];
+      if (entry.painLevel != null) summaryParts.add('Pain: ${entry.painLevel}/10');
+      if (entry.energyLevel != null) summaryParts.add('Energy: ${entry.energyLevel}/10');
+      if (entry.mood != null && entry.mood!.isNotEmpty) summaryParts.add('Mood: ${entry.mood}');
+      if (entry.temperature != null) summaryParts.add('Temp: ${entry.temperature}°F');
+      
+      final logSummary = summaryParts.isNotEmpty 
+          ? summaryParts.join(', ')
+          : 'New health entry logged';
+      
+      // Notify family members about new health log
+      final familyService = FamilyService();
+      await familyService.notifyFamilyNewHealthLog(
+        patientId: userId,
+        patientName: user.name,
+        logSummary: logSummary,
+      );
+      
       // Trigger family alert check (runs in background)
-      FamilyService().checkAndNotifyAlerts(userId, user.name);
+      familyService.checkAndNotifyAlerts(userId, user.name);
     } catch (e) {
       debugPrint('TrackerService._checkFamilyAlerts error: $e');
     }

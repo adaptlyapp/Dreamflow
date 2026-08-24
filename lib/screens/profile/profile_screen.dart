@@ -106,18 +106,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         userEmail == 'adaptlyapp@gmail.com' ||
         authEmail == 'dpaine170014@gmail.com' ||
         userEmail == 'dpaine170014@gmail.com';
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background image
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          // Content
-          SafeArea(
+    return GlassyScaffold(
+      body: SafeArea(
             child: _loading
                 ? const Center(child: CenteredLoadingSkeleton())
                 : RefreshIndicator(
@@ -484,8 +474,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
           ),
-        ],
-      ),
     );
   }
 }

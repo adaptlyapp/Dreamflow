@@ -126,30 +126,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GlassyScaffold(
       backgroundColor: const Color(0xFF0A1F2E),
-      body: Stack(
-        children: [
-          // Mountain background image
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/b0380405-152d-4717-8856-bf48d924b809.png',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF0A1F2E),
-                      Color(0xFF0D2A3D),
-                      Color(0xFF0A1F2E),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+      body:
           // Content
           SafeArea(
             child: _isLoading
@@ -158,8 +137,6 @@ class _JourneyScreenState extends State<JourneyScreen> {
                     ? _buildEmptyState()
                     : _buildJourneyContent(),
           ),
-        ],
-      ),
     );
   }
 

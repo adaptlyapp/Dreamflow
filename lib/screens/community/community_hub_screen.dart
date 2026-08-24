@@ -77,7 +77,7 @@ class _CommunityHubScreenState extends State<CommunityHubScreen>
     final scheme = Theme.of(context).colorScheme;
     final gradients = Theme.of(context).extension<AppGradients>();
 
-    return Scaffold(
+    return GlassyScaffold(
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
@@ -231,7 +231,7 @@ class _FadeSlideIn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Keep animations subtle; cap stagger so long lists don't feel laggy.
-    final staggerMs = (index.clamp(0, 10) as int) * 35;
+    final staggerMs = (index.clamp(0, 10)) * 35;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: Duration(milliseconds: 380 + staggerMs),
@@ -1246,8 +1246,6 @@ class _ExploreTabState extends State<_ExploreTab> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

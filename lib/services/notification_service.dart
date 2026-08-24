@@ -444,6 +444,112 @@ class NotificationService {
     }
   }
 
+  /// Schedule medication reminders for family members to remind the patient
+  /// This is called by family members to get notified when patient needs to take meds
+  Future<void> scheduleFamilyMedicationReminders({
+    required List<Medication> medications,
+    required String patientName,
+    required String patientId,
+  }) async {
+    await init();
+
+    // Cancel any existing family medication reminders for this patient FIRST,
+    // so removed medications don't keep firing.
+    await cancelFamilyMedicationReminders(patientId);
+
+    debugPrint('NotificationService.scheduleFamilyMedicationReminders: Scheduling ${medications.length} medications for $patientName');
+
+    for (final med in medications) {
+      for (var i = 0; i < med.times.length; i++) {
+        final t = med.times[i];
+        final parts = t.split(':');
+        if (parts.length != 2) continue;
+        final hour = int.tryParse(parts[0]);
+        final minute = int.tryParse(parts[1]);
+        if (hour == null || minute == null) continue;
+
+        final when = _nextInstantForTime(hour, minute);
+        // Use a deterministic key that includes the med id so re-scheduling
+        // the same med replaces the same notification, while different meds
+        // occupy different IDs. IMPORTANT: cancel uses payload-based lookup
+        // (see cancelFamilyMedicationReminders) so ID scheme can be any
+        // deterministic function.
+        final id = _familyIdFor('${patientId}_${med.id}', 'family_med_$i');
+
+        debugPrint('NotificationService.scheduleFamilyMedicationReminders: ${med.name} @ ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} id=$id');
+
+        await _zonedSchedule(
+          id: id,
+          title: '💊 Medication Reminder: $patientName',
+          body: med.dosage == null || med.dosage!.isEmpty
+              ? 'Time for ${med.name}'
+              : 'Time for ${med.name} (${med.dosage})',
+          when: when,
+          channelId: familyChannelId,
+          matchComponents: DateTimeComponents.time,
+          // Payload prefix used by cancelFamilyMedicationReminders to find
+          // and cancel reminders for a specific patient regardless of the
+          // ID hashing scheme.
+          payload: 'family_med|$patientId|${med.id}|${med.name}',
+        );
+      }
+    }
+  }
+
+  /// Cancel all family medication reminders for a patient.
+  ///
+  /// Uses pendingNotificationRequests() + payload matching, which is robust
+  /// against ID scheme changes and cleanly removes reminders for medications
+  /// that no longer exist (which was previously broken due to an ID mismatch
+  /// between schedule and cancel).
+  Future<void> cancelFamilyMedicationReminders(String patientId) async {
+    await init();
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      final prefix = 'family_med|$patientId|';
+      int canceled = 0;
+      for (final p in pending) {
+        final payload = p.payload;
+        if (payload != null && payload.startsWith(prefix)) {
+          try {
+            await _plugin.cancel(id: p.id);
+            canceled++;
+          } catch (_) {}
+        }
+      }
+      debugPrint('NotificationService.cancelFamilyMedicationReminders: canceled $canceled reminders for patientId=$patientId');
+    } catch (e) {
+      debugPrint('NotificationService.cancelFamilyMedicationReminders error: $e');
+    }
+  }
+
+  /// Cancel family medication reminders for a SPECIFIC medication of a patient.
+  /// Called when the patient deletes a medication so any family-side reminders
+  /// previously scheduled on THIS device also stop firing.
+  Future<void> cancelFamilyMedicationRemindersForMed(
+    String patientId,
+    String medId,
+  ) async {
+    await init();
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      final prefix = 'family_med|$patientId|$medId|';
+      int canceled = 0;
+      for (final p in pending) {
+        final payload = p.payload;
+        if (payload != null && payload.startsWith(prefix)) {
+          try {
+            await _plugin.cancel(id: p.id);
+            canceled++;
+          } catch (_) {}
+        }
+      }
+      debugPrint('NotificationService.cancelFamilyMedicationRemindersForMed: canceled $canceled reminders for patientId=$patientId medId=$medId');
+    } catch (e) {
+      debugPrint('NotificationService.cancelFamilyMedicationRemindersForMed error: $e');
+    }
+  }
+
   // -------------------- DAILY ENGAGEMENT (PUSH-BACK-TO-APP) --------------------
 
   /// Schedules recurring daily local reminders to bring the user back to the app.
@@ -713,6 +819,41 @@ class NotificationService {
       id: id,
       title: '⚠️ Infection Risk: $patientName',
       body: symptomDescription,
+      channelId: familyChannelId,
+    );
+  }
+
+  /// Notify family member about medication reminder
+  Future<void> notifyFamilyMedicationTime({
+    required String patientName,
+    required String medicationName,
+    required String dosage,
+    required String patientId,
+  }) async {
+    await init();
+    final id = _familyIdFor(patientId + medicationName, 'medication_time');
+    await showNow(
+      id: id,
+      title: '💊 Medication Reminder: $patientName',
+      body: dosage.isEmpty
+          ? 'Time for $medicationName'
+          : 'Time for $medicationName ($dosage)',
+      channelId: familyChannelId,
+    );
+  }
+
+  /// Notify family member about new health log entry
+  Future<void> notifyFamilyNewHealthLog({
+    required String patientName,
+    required String patientId,
+    String? logSummary,
+  }) async {
+    await init();
+    final id = _familyIdFor(patientId + DateTime.now().toIso8601String(), 'health_log');
+    await showNow(
+      id: id,
+      title: '📊 New Health Log: $patientName',
+      body: logSummary ?? 'New health entry logged',
       channelId: familyChannelId,
     );
   }

@@ -5,6 +5,7 @@ class Medication {
   final String? dosage;
   final List<String> times; // e.g., ['08:00', '14:00', '20:00']
   final String? notes;
+  final String? assignedCaregiverId;
 
   const Medication({
     required this.id,
@@ -12,6 +13,7 @@ class Medication {
     this.dosage,
     this.times = const [],
     this.notes,
+    this.assignedCaregiverId,
   });
 
   factory Medication.fromJson(Map<String, dynamic> json) => Medication(
@@ -20,6 +22,7 @@ class Medication {
     dosage: json['dosage'] as String?,
     times: List<String>.from(json['times'] ?? []),
     notes: json['notes'] as String?,
+    assignedCaregiverId: json['assignedCaregiverId'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -28,6 +31,7 @@ class Medication {
     if (dosage != null) 'dosage': dosage,
     'times': times,
     if (notes != null) 'notes': notes,
+    if (assignedCaregiverId != null) 'assignedCaregiverId': assignedCaregiverId,
   };
 
   Medication copyWith({
@@ -35,12 +39,14 @@ class Medication {
     String? dosage,
     List<String>? times,
     String? notes,
+    String? assignedCaregiverId,
   }) => Medication(
     id: id,
     name: name ?? this.name,
     dosage: dosage ?? this.dosage,
     times: times ?? this.times,
     notes: notes ?? this.notes,
+    assignedCaregiverId: assignedCaregiverId ?? this.assignedCaregiverId,
   );
 
   /// Returns a formatted string of scheduled times (e.g., "Morning, Noon, Night")

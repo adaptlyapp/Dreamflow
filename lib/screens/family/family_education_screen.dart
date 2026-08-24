@@ -200,19 +200,21 @@ class _FamilyEducationScreenState extends State<FamilyEducationScreen>
             onPressed: _load,
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: cs.primary,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          tabs: const [
-            Tab(icon: Icon(Icons.star_outline), text: 'For You'),
-            Tab(icon: Icon(Icons.grid_view_rounded), text: 'Browse'),
-            Tab(icon: Icon(Icons.medical_services_outlined), text: 'Supplies'),
-            Tab(icon: Icon(Icons.bookmark_outline), text: 'Saved'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: TabBar(
+            controller: _tabController,
+            indicatorColor: cs.primary,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 0),
+            tabs: const [
+              Tab(icon: Icon(Icons.star_outline), text: 'For You'),
+              Tab(icon: Icon(Icons.grid_view_rounded), text: 'Browse'),
+              Tab(icon: Icon(Icons.medical_services_outlined), text: 'Supplies'),
+              Tab(icon: Icon(Icons.bookmark_outline), text: 'Saved'),
+            ],
+          ),
         ),
       ),
       body: _loading

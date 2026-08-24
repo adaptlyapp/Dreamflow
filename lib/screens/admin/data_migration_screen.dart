@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wellspring/utils/firebase_to_supabase_migration.dart';
+import 'package:wellspring/services/recovery_blueprint_service.dart';
 
 /// Admin screen for migrating Firebase data to Supabase
 /// 
@@ -18,6 +19,7 @@ class _DataMigrationScreenState extends State<DataMigrationScreen> {
   bool _isMigrating = false;
   bool _migrationComplete = false;
   String? _errorMessage;
+  final _blueprintService = RecoveryBlueprintService();
 
   Future<void> _startMigration() async {
     setState(() {
@@ -96,6 +98,59 @@ class _DataMigrationScreenState extends State<DataMigrationScreen> {
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Failed to clear data: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearCareTeamForAdptlyapp() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Care Team?'),
+        content: const Text(
+          'This will remove all care team members from the recovery blueprint for adptlyapp@gmail.com.\n\n'
+          'Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear Care Team'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isMigrating = true);
+
+    try {
+      await _blueprintService.clearCareTeamByEmail('adptlyapp@gmail.com');
+      
+      if (mounted) {
+        setState(() => _isMigrating = false);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Care team cleared for adptlyapp@gmail.com'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isMigrating = false);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to clear care team: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -310,6 +365,20 @@ class _DataMigrationScreenState extends State<DataMigrationScreen> {
                 padding: const EdgeInsets.all(16),
                 foregroundColor: Colors.red,
                 side: const BorderSide(color: Colors.red),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Clear Care Team for adptlyapp Button
+            OutlinedButton.icon(
+              onPressed: _isMigrating ? null : _clearCareTeamForAdptlyapp,
+              icon: const Icon(Icons.people_outline, color: Colors.orange),
+              label: const Text('Clear Care Team (adptlyapp@gmail.com)'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.all(16),
+                foregroundColor: Colors.orange,
+                side: const BorderSide(color: Colors.orange),
               ),
             ),
 

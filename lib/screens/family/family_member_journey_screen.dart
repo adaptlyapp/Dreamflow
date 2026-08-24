@@ -4,7 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/services/recovery_blueprint_service.dart';
+import 'package:wellspring/services/family_service.dart';
+import 'package:wellspring/services/plan_timeline_service.dart';
 import 'package:wellspring/models/recovery_blueprint.dart';
+import 'package:wellspring/models/user.dart';
+import 'package:wellspring/models/milestone.dart';
+import 'package:wellspring/models/plan_timeline.dart';
 import 'package:wellspring/theme.dart';
 import 'package:wellspring/screens/recovery/recovery_blueprint_dashboard.dart';
 import 'package:wellspring/screens/goals/milestone_education_page.dart';
@@ -13,6 +18,7 @@ import 'package:wellspring/openai/openai_config.dart';
 import 'package:wellspring/widgets/skeletons.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:wellspring/widgets/help_type_chip.dart';
+import 'package:uuid/uuid.dart';
 
 /// Family member's own journey page - completely separate from patient journey
 class FamilyMemberJourneyScreen extends StatefulWidget {
@@ -200,6 +206,7 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
               userId: _userId,
               onAdd: () => _showAddMilestoneDialog(),
               onGenerateAI: () => _generateMilestonesWithAI(),
+              onSavePlan: () => _showSavePlanDialog(milestones),
               onRefresh: _loadData,
             ),
             const SizedBox(height: 16),
@@ -214,6 +221,163 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showSavePlanDialog(List<dynamic> milestones) async {
+    if (milestones.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add milestones before saving a plan')),
+      );
+      return;
+    }
+
+    final planNameController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Save as Plan'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Give your recovery plan a name:'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: planNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Plan Name',
+                  border: OutlineInputBorder(),
+                  hintText: 'E.g., Bed Wounds Recovery Plan',
+                ),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'This saves ${milestones.length} milestone${milestones.length != 1 ? 's' : ''} as a new plan without affecting existing milestones.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (planNameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a plan name')),
+                );
+                return;
+              }
+
+              try {
+                Navigator.pop(dialogContext);
+                final planName = planNameController.text.trim();
+                final authUserId = SupabaseConfig.client.auth.currentUser?.id;
+
+                if (authUserId == null || _userId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('User not found')),
+                  );
+                  return;
+                }
+
+                // Generate a unique condition ID for this plan
+                const uuid = Uuid();
+                final conditionId = uuid.v4();
+
+                // Convert raw milestones to Milestone objects
+                final milestonesToSave = milestones.map((m) {
+                  DateTime? parseDate(dynamic value) {
+                    if (value is DateTime) return value;
+                    if (value is String) {
+                      final parsed = DateTime.tryParse(value);
+                      if (parsed != null) return parsed;
+                    }
+                    return null;
+                  }
+
+                  return Milestone(
+                    id: m['id'] ?? const Uuid().v4(),
+                    userId: authUserId,
+                    title: m['title'] ?? 'Milestone',
+                    description: m['description'],
+                    dueDate: parseDate(m['due_date']),
+                    completed: m['completed'] == true,
+                    order: milestones.indexOf(m),
+                    helpType: m['help_type'] ?? m['helpType'],
+                    createdAt: parseDate(m['created_at']) ?? DateTime.now(),
+                    updatedAt: parseDate(m['updated_at']) ?? DateTime.now(),
+                    conditionId: conditionId,
+                  );
+                }).toList();
+
+                // Create plan timeline
+                final plan = PlanTimeline(
+                  id: const Uuid().v4(),
+                  userId: authUserId,
+                  conditionId: conditionId,
+                  name: planName,
+                  isCurrent: false,
+                  milestones: milestonesToSave,
+                  createdAt: DateTime.now(),
+                  updatedAt: DateTime.now(),
+                );
+
+                // Save to Supabase using the service
+                final planService = PlanTimelineService();
+                await planService.createFromMilestones(
+                  userId: authUserId,
+                  conditionId: conditionId,
+                  name: planName,
+                  milestones: milestonesToSave,
+                  conditionName: planName,
+                );
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('✅ Plan "$planName" saved successfully!')),
+                  );
+                }
+              } catch (e) {
+                debugPrint('[FamilyMemberJourney] Error saving plan: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error saving plan: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Save Plan'),
+          ),
+        ],
       ),
     );
   }
@@ -431,6 +595,25 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
   }
 
   Future<void> _generateMilestonesWithAI() async {
+    // Load connected patient info to provide context to AI
+    User? connectedPatient;
+    String? patientConditions;
+    try {
+      final currentUser = await _userService.getCurrentUser();
+      if (currentUser != null) {
+        final familyService = FamilyService();
+        final connection = await familyService.getPrimaryConnection(currentUser.id);
+        if (connection != null) {
+          connectedPatient = await _userService.getUserById(connection.patientId);
+          if (connectedPatient != null && connectedPatient.conditions.isNotEmpty) {
+            patientConditions = connectedPatient.conditions.join(', ');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[FamilyMemberJourney] Error loading patient data: $e');
+    }
+
     final descCtrl = TextEditingController();
     int count = 5;
     String durationUnit = 'weeks';
@@ -474,6 +657,34 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                       style: ctx.textStyles.titleLarge
                           ?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
+                  if (connectedPatient != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'A.R.I.E will consider ${connectedPatient.name}\'s condition${patientConditions != null ? ' ($patientConditions)' : ''} when creating your plan',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   TextField(
                     controller: descCtrl,
                     decoration: const InputDecoration(
@@ -566,13 +777,42 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
 
                                 try {
                                   final ai = OpenAIClient();
+                                  
+                                  // Build context about patient's condition
+                                  String conditionContext = 'Family Member Recovery Support';
+                                  String? detailsSummary;
+                                  
+                                  if (connectedPatient != null) {
+                                    if (patientConditions != null) {
+                                      conditionContext = 'Supporting family member with $patientConditions';
+                                    }
+                                    
+                                    // Build detailed summary with patient info
+                                    final summaryParts = <String>[];
+                                    if (connectedPatient.conditions.isNotEmpty) {
+                                      summaryParts.add('Patient conditions: ${connectedPatient.conditions.join(", ")}');
+                                    }
+                                    if (connectedPatient.medications.isNotEmpty) {
+                                      final medNames = connectedPatient.medications
+                                          .map((m) => m.name)
+                                          .join(', ');
+                                      summaryParts.add('Current medications: $medNames');
+                                    }
+                                    if (connectedPatient.diagnosisDate != null) {
+                                      final daysSince = DateTime.now().difference(connectedPatient.diagnosisDate!).inDays;
+                                      summaryParts.add('Days since diagnosis: $daysSince');
+                                    }
+                                    if (summaryParts.isNotEmpty) {
+                                      detailsSummary = summaryParts.join('. ');
+                                    }
+                                  }
+                                  
                                   plan = await ai.generateMilestones(
                                     description: description,
                                     milestones: count,
                                     durationDays: dDays,
-                                    conditionName:
-                                        'Family Member Recovery Support',
-                                    conditionDetailsSummary: null,
+                                    conditionName: conditionContext,
+                                    conditionDetailsSummary: detailsSummary,
                                   );
                                 } catch (e) {
                                   debugPrint(
@@ -603,7 +843,8 @@ class _FamilyMemberJourneyScreenState extends State<FamilyMemberJourneyScreen> {
                                         item['title'] ?? 'Milestone ${i + 1}',
                                     'description': item['description'],
                                     'due_date': item['dueDate'],
-                                    'help_type': (item['helpType'] ?? item['help_type']),
+                                    'help_type':
+                                        (item['helpType'] ?? item['help_type']),
                                     'completed': false,
                                     'created_at':
                                         DateTime.now().toIso8601String(),
@@ -865,12 +1106,14 @@ class _MilestonesCard extends StatelessWidget {
   final String? userId;
   final VoidCallback onAdd;
   final VoidCallback onGenerateAI;
+  final VoidCallback onSavePlan;
   final VoidCallback onRefresh;
   const _MilestonesCard(
       {required this.milestones,
       this.userId,
       required this.onAdd,
       required this.onGenerateAI,
+      required this.onSavePlan,
       required this.onRefresh});
 
   Future<void> _toggleMilestone(
@@ -1234,10 +1477,14 @@ class _MilestonesCard extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              if (((m['help_type'] ?? m['helpType']) ?? '').toString().isNotEmpty) ...[
+                              if (((m['help_type'] ?? m['helpType']) ?? '')
+                                  .toString()
+                                  .isNotEmpty) ...[
                                 const SizedBox(height: 4),
                                 HelpTypeChip(
-                                  helpType: ((m['help_type'] ?? m['helpType']) ?? '').toString(),
+                                  helpType:
+                                      ((m['help_type'] ?? m['helpType']) ?? '')
+                                          .toString(),
                                   compact: true,
                                 ),
                               ],

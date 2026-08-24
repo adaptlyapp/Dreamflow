@@ -28,13 +28,19 @@ class SupabaseConfig {
     
     // Log when deep link session is detected
     if (kDebugMode) {
-      SupabaseConfig.auth.onAuthStateChange.listen((data) {
-        final event = data.event;
-        debugPrint('[SupabaseAuth] Auth state changed: $event');
-        if (event == AuthChangeEvent.signedIn) {
-          debugPrint('[SupabaseAuth] User signed in successfully');
-        }
-      });
+      SupabaseConfig.auth.onAuthStateChange.listen(
+        (data) {
+          final event = data.event;
+          debugPrint('[SupabaseAuth] Auth state changed: $event');
+          if (event == AuthChangeEvent.signedIn) {
+            debugPrint('[SupabaseAuth] User signed in successfully');
+          }
+        },
+        onError: (error) {
+          debugPrint('[SupabaseAuth] Auth state error: $error');
+        },
+        cancelOnError: false,
+      );
     }
   }
 

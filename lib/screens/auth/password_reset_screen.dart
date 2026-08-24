@@ -196,7 +196,17 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           FilledButton.icon(
-            onPressed: () => context.go('/auth'),
+            onPressed: () async {
+              // Sign out first to avoid redirect loop
+              try {
+                await SupabaseConfig.auth.signOut();
+              } catch (e) {
+                debugPrint('[PasswordReset] Sign out error: $e');
+              }
+              if (context.mounted) {
+                context.go('/auth');
+              }
+            },
             icon: const Icon(Icons.arrow_back),
             label: const Text('Back to sign in'),
           ),
@@ -342,7 +352,17 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
           
           const SizedBox(height: AppSpacing.sm),
           TextButton(
-            onPressed: _isLoading ? null : () => context.go('/auth'),
+            onPressed: _isLoading ? null : () async {
+              // Sign out first to avoid redirect loop
+              try {
+                await SupabaseConfig.auth.signOut();
+              } catch (e) {
+                debugPrint('[PasswordReset] Sign out error: $e');
+              }
+              if (context.mounted) {
+                context.go('/auth');
+              }
+            },
             child: const Text('Cancel'),
           ),
         ],

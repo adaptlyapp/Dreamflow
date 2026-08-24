@@ -132,7 +132,9 @@ class _FamilyResourcesScreenState extends State<FamilyResourcesScreen> {
         // Background Image
         Positioned.fill(
           child: Image.asset(
-            'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png',
+            isDark
+              ? 'assets/images/ChatGPT_Image_Aug_3_2026_07_26_30_AM.png'
+              : 'assets/images/Misty_Mountain_Sunrise_Road.png',
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) => Container(
               color: isDark ? const Color(0xFF000000) : const Color(0xFFF8FAFC),

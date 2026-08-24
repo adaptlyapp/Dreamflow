@@ -6,9 +6,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:wellspring/models/goal.dart';
 import 'package:wellspring/models/tracker_entry.dart';
+import 'package:wellspring/models/user.dart';
 import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/tracker_service.dart';
 import 'package:wellspring/services/goal_service.dart';
+import 'package:wellspring/services/user_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:wellspring/services/milestone_service.dart';
 import 'package:wellspring/models/milestone.dart';
@@ -26,6 +28,8 @@ import 'package:wellspring/widgets/skeletons.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wellspring/services/notification_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:wellspring/widgets/care_question_bubble.dart';
+import 'package:wellspring/services/family_service.dart';
 
 // Updated: Goals now use proper UUID format instead of timestamps
 class HomeScreen extends StatefulWidget {
@@ -135,19 +139,79 @@ class _HomeScreenState extends State<HomeScreen>
       _loadMedications(),
     ]);
     if (mounted) setState(() => _isLoading = false);
+
+    // CRITICAL FIX: Ensure patient code exists for patient users
+    _ensurePatientCodeGenerated();
+
     // After home loads, make sure all of the user's medications have
     // native local-notification reminders scheduled. This covers users
     // who added meds on another device/install where scheduling never ran.
+    // CRITICAL FIX: Only schedule patient medication reminders if user is a patient
     try {
       final user = context.read<UserProvider>().currentUser;
       final meds = user?.medications ?? const [];
-      if (meds.isNotEmpty) {
-        debugPrint(
-            'Home._loadAll: syncing ${meds.length} medications with NotificationService');
-        await NotificationService.instance.syncMedications(meds);
+      if (user?.role.value == 'patient') {
+        // Cancel any family medication reminders from previous sessions
+        // This ensures clean state when switching from family to patient portal
+        if (user?.id != null) {
+          debugPrint('Home._loadAll: Canceling any stale family medication reminders');
+          await NotificationService.instance.cancelFamilyMedicationReminders(user!.id);
+        }
+        
+        // Now schedule patient's own medication reminders
+        if (meds.isNotEmpty) {
+          debugPrint(
+              'Home._loadAll: syncing ${meds.length} medications with NotificationService (patient portal)');
+          await NotificationService.instance.syncMedications(meds);
+        }
+      } else if (user?.role.value == 'family') {
+        debugPrint('Home._loadAll: Skipping patient medication sync - user is family member');
       }
     } catch (e) {
       debugPrint('Home._loadAll: syncMedications error: $e');
+    }
+  }
+
+  /// CRITICAL FIX: Ensure patient code is generated for patient users
+  Future<void> _ensurePatientCodeGenerated() async {
+    try {
+      final userProvider = context.read<UserProvider>();
+      final user = userProvider.currentUser;
+
+      if (user == null) return;
+
+      // Only generate for patient users who don't have a code
+      if (user.role.value == 'patient' &&
+          (user.patientCode == null || user.patientCode!.isEmpty)) {
+        debugPrint('Home: Patient code missing, attempting to generate...');
+
+        // Try to get hospital/organization from preferences
+        final hospitalId = user.preferences['hospitalId'] as String?;
+        final organizationId = user.preferences['organizationId'] as String?;
+
+        if (hospitalId != null || organizationId != null) {
+          // Use a UserService instance to generate code
+          final userService = UserService();
+          try {
+            final generatedCode =
+                await userService.ensurePatientCodeForCurrentUser(
+              hospitalId: hospitalId,
+              organizationId: organizationId,
+            );
+            debugPrint('Home: Generated patient code: $generatedCode');
+
+            // Reload user to get updated code
+            await userProvider.loadUser();
+          } catch (e) {
+            debugPrint('Home: Failed to generate patient code: $e');
+          }
+        } else {
+          debugPrint(
+              'Home: Cannot generate patient code - no hospital/organization set');
+        }
+      }
+    } catch (e) {
+      debugPrint('Home._ensurePatientCodeGenerated error: $e');
     }
   }
 
@@ -211,7 +275,8 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  Future<void> _updateMedication(Medication oldMedication, Medication newMedication) async {
+  Future<void> _updateMedication(
+      Medication oldMedication, Medication newMedication) async {
     final userProvider = context.read<UserProvider>();
     final user = userProvider.currentUser;
     if (user == null) {
@@ -220,12 +285,14 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // Replace old medication with new one
-    final updatedMedications = user.medications.map((med) => med.id == oldMedication.id ? newMedication : med).toList();
+    final updatedMedications = user.medications
+        .map((med) => med.id == oldMedication.id ? newMedication : med)
+        .toList();
     final updatedUser = user.copyWith(medications: updatedMedications);
 
     await userProvider.updateUser(updatedUser);
     debugPrint('Home._updateMedication: Updated ${newMedication.name}');
-    
+
     // Cancel old notifications and schedule new ones
     try {
       await NotificationService.instance.cancelMedication(oldMedication.id);
@@ -253,7 +320,8 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Medication'),
-        content: Text('Are you sure you want to delete ${medication.name}? All reminders will be cancelled.'),
+        content: Text(
+            'Are you sure you want to delete ${medication.name}? All reminders will be cancelled.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -270,15 +338,21 @@ class _HomeScreenState extends State<HomeScreen>
     if (confirmed != true) return;
 
     // Remove from medications list
-    final updatedMedications = user.medications.where((med) => med.id != medication.id).toList();
+    final updatedMedications =
+        user.medications.where((med) => med.id != medication.id).toList();
     final updatedUser = user.copyWith(medications: updatedMedications);
 
     await userProvider.updateUser(updatedUser);
     debugPrint('Home._deleteMedication: Deleted ${medication.name}');
-    
-    // Cancel all notifications for this medication
+
+    // Cancel patient's own medication reminders AND any family-side reminders
+    // that may have been scheduled on this device for the same medication.
     try {
       await NotificationService.instance.cancelMedication(medication.id);
+      // Also clear any family reminders for this specific medication, in case
+      // this device was previously used to view the family portal.
+      await NotificationService.instance
+          .cancelFamilyMedicationRemindersForMed(user.id, medication.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${medication.name} deleted')),
@@ -1454,17 +1528,10 @@ class _HomeScreenState extends State<HomeScreen>
     super.build(context);
     final user = context.watch<UserProvider>().currentUser;
     final showOnboardingReminder = user != null && !user.onboardingCompleted;
-    return Scaffold(
+    
+    return GlassyScaffold(
       body: Stack(
         children: [
-          // Background image
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/ChatGPT_Image_Aug_4_2026_01_35_03_PM.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          // Content
           _isLoading
               ? const Center(child: CenteredLoadingSkeleton())
               : Column(
@@ -1476,8 +1543,6 @@ class _HomeScreenState extends State<HomeScreen>
                         await _loadSnapshot();
                       },
                       onOpenPlan: _openPlanForUser,
-                      onOpenCommunities: () => context.push('/communities'),
-                      onOpenResources: () => context.push('/resources'),
                       onSubmitFeedback: _openSubmitFeedback,
                       onOpenTherapist: () => context.push('/therapist'),
                       onOpenEducation: () => context.push('/education'),
@@ -1491,14 +1556,17 @@ class _HomeScreenState extends State<HomeScreen>
                           children: [
                             if (showOnboardingReminder)
                               Padding(
-                                padding: EdgeInsets.fromLTRB(AppSpacing.lg,
-                                    AppSpacing.lg, AppSpacing.lg, 0),
+                                padding: EdgeInsets.fromLTRB(
+                                  AppSpacing.lg,
+                                  AppSpacing.lg,
+                                  AppSpacing.lg,
+                                  0,
+                                ),
                                 child: _OnboardingReminderBanner(
                                   onFinish: () => context.go('/onboarding'),
                                 ),
                               ),
                             SizedBox(height: AppSpacing.sm),
-                            // Move Next Step to the top, above Health Snapshot
                             _AnimatedSection(
                               delayMs: 50,
                               child: Column(
@@ -1506,7 +1574,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 children: [
                                   Padding(
                                     padding: EdgeInsets.symmetric(
-                                        horizontal: AppSpacing.lg),
+                                      horizontal: AppSpacing.lg,
+                                    ),
                                     child: Text(
                                       'Patient Plan',
                                       style: Theme.of(context)
@@ -1523,7 +1592,8 @@ class _HomeScreenState extends State<HomeScreen>
                                     child: _nextStep != null
                                         ? Padding(
                                             padding: EdgeInsets.symmetric(
-                                                horizontal: AppSpacing.lg),
+                                              horizontal: AppSpacing.lg,
+                                            ),
                                             child: _NextStepCard(
                                               milestone: _nextStep!,
                                               onMarkDone: () async {
@@ -1535,25 +1605,33 @@ class _HomeScreenState extends State<HomeScreen>
                                                   if (uid == null)
                                                     throw Exception('No user');
                                                   debugPrint(
-                                                      'Home: Marking milestone ${_nextStep!.id} as completed');
+                                                    'Home: Marking milestone ${_nextStep!.id} as completed',
+                                                  );
                                                   await _milestoneService
                                                       .updateFields(
-                                                          uid,
-                                                          _nextStep!.id,
-                                                          {'completed': true});
+                                                    uid,
+                                                    _nextStep!.id,
+                                                    {'completed': true},
+                                                  );
                                                   debugPrint(
-                                                      'Home: Milestone updated successfully, reloading next step');
+                                                    'Home: Milestone updated successfully, reloading next step',
+                                                  );
                                                   await _loadNextStep();
                                                   debugPrint(
-                                                      'Home: Next step reloaded');
+                                                    'Home: Next step reloaded',
+                                                  );
                                                 } catch (e) {
                                                   debugPrint(
-                                                      'Home: Error marking done: $e');
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(
+                                                    'Home: Error marking done: $e',
+                                                  );
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
                                                     SnackBar(
-                                                        content: Text(
-                                                            'Failed to update step: $e')),
+                                                      content: Text(
+                                                        'Failed to update step: $e',
+                                                      ),
+                                                    ),
                                                   );
                                                 }
                                               },
@@ -1565,18 +1643,19 @@ class _HomeScreenState extends State<HomeScreen>
                                           )
                                         : Padding(
                                             padding: EdgeInsets.symmetric(
-                                                horizontal: AppSpacing.lg),
+                                              horizontal: AppSpacing.lg,
+                                            ),
                                             child: _NoNextStepCard(
-                                                onOpenPlan: _openPlanForUser,
-                                                isAllCompleted:
-                                                    _allStepsCompleted),
+                                              onOpenPlan: _openPlanForUser,
+                                              isAllCompleted:
+                                                  _allStepsCompleted,
+                                            ),
                                           ),
                                   ),
                                 ],
                               ),
                             ),
                             SizedBox(height: AppSpacing.sm),
-                            // Daily Goals
                             _AnimatedSection(
                               delayMs: 75,
                               child: _GoalsSection(
@@ -1604,16 +1683,16 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                             SizedBox(height: AppSpacing.sm),
-                            // Medication Tracker Section (below Daily Goals, above Health Snapshot)
                             _AnimatedSection(
                               delayMs: 100,
                               child: _MedicationTrackerSection(
                                 medications: user?.medications ?? [],
                                 isExpanded: _medicationTrackerExpanded,
                                 isLoading: _loadingMedications,
-                                onToggleExpand: () => setState(() =>
-                                    _medicationTrackerExpanded =
-                                        !_medicationTrackerExpanded),
+                                onToggleExpand: () => setState(
+                                  () => _medicationTrackerExpanded =
+                                      !_medicationTrackerExpanded,
+                                ),
                                 onAddEntry: () async {
                                   await context.push('/tracker/add');
                                   await _loadMedications();
@@ -1627,7 +1706,6 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                             SizedBox(height: AppSpacing.sm),
-                            // Health Snapshot
                             _AnimatedSection(
                               delayMs: 130,
                               child: _HealthSnapshotSection(
@@ -1667,9 +1745,37 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ],
                 ),
+          // Floating care question bubble
+          if (user != null)
+            FutureBuilder<String?>(
+              future: _getPatientIdForFamily(user),
+              builder: (context, snapshot) {
+                final patientId = snapshot.data;
+                final isFamily = user.role == 'family' && patientId != null;
+                
+                return CareQuestionBubble(
+                  userId: user.id,
+                  patientId: patientId,
+                  isFamily: isFamily,
+                );
+              },
+            ),
         ],
       ),
     );
+  }
+
+  /// Get the connected patient ID if the user is a family member
+  Future<String?> _getPatientIdForFamily(User user) async {
+    if (user.role != 'family') return null;
+    
+    try {
+      final connection = await FamilyService().getPrimaryConnection(user.id);
+      return connection?.patientId;
+    } catch (e) {
+      debugPrint('[HomeScreen] Error getting patient ID for family: $e');
+      return null;
+    }
   }
 }
 
@@ -1767,8 +1873,6 @@ class _OnboardingReminderBanner extends StatelessWidget {
 class _HomeHeader extends StatefulWidget {
   final VoidCallback onAddEntry;
   final VoidCallback onOpenPlan;
-  final VoidCallback onOpenCommunities;
-  final VoidCallback onOpenResources;
   final VoidCallback onSubmitFeedback;
   final VoidCallback onOpenTherapist;
   final VoidCallback onOpenEducation;
@@ -1777,8 +1881,6 @@ class _HomeHeader extends StatefulWidget {
   const _HomeHeader({
     required this.onAddEntry,
     required this.onOpenPlan,
-    required this.onOpenCommunities,
-    required this.onOpenResources,
     required this.onSubmitFeedback,
     required this.onOpenTherapist,
     required this.onOpenEducation,
@@ -1815,27 +1917,13 @@ class _HomeHeaderState extends State<_HomeHeader> {
     final greeting =
         firstName != null ? '$baseGreeting, $firstName' : baseGreeting;
 
-    List<Color> _canopyColors(ColorScheme cs) {
-      if (hour < 12) {
-        return [cs.primaryContainer, cs.primary];
-      } else if (hour < 17) {
-        return [cs.primary, cs.secondary];
-      } else {
-        return [cs.tertiary, cs.primary];
-      }
-    }
-
     return Stack(
       children: [
-        // Canopy background with time-of-day gradient
+        // Canopy background with solid green
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: _canopyColors(cs),
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: cs.primary,
             borderRadius: BorderRadius.only(
               bottomLeft: Radius.circular(AppRadius.xl),
               bottomRight: Radius.circular(AppRadius.xl),
@@ -1954,26 +2042,6 @@ class _HomeHeaderState extends State<_HomeHeader> {
                                               borderColor: cs.onPrimary
                                                   .withValues(alpha: 0.20),
                                             ),
-                                          ),
-                                          _QuickActionButton(
-                                            icon: Icons.groups_2_outlined,
-                                            label: 'Communities',
-                                            onTap: widget.onOpenCommunities,
-                                            bgColor: cs.onPrimary
-                                                .withValues(alpha: 0.12),
-                                            fgColor: cs.onPrimary,
-                                            borderColor: cs.onPrimary
-                                                .withValues(alpha: 0.20),
-                                          ),
-                                          _QuickActionButton(
-                                            icon: Icons.library_books_outlined,
-                                            label: 'Resources',
-                                            onTap: widget.onOpenResources,
-                                            bgColor: cs.onPrimary
-                                                .withValues(alpha: 0.12),
-                                            fgColor: cs.onPrimary,
-                                            borderColor: cs.onPrimary
-                                                .withValues(alpha: 0.20),
                                           ),
                                           _QuickActionButton(
                                             icon:
@@ -4905,7 +4973,8 @@ class _MedicationTrackerSection extends StatelessWidget {
   final VoidCallback onEditMedications;
   final Future<void> Function(Medication medication) onQuickLogMedication;
   final Future<void> Function(Medication medication) onAddMedication;
-  final Future<void> Function(Medication oldMed, Medication newMed) onUpdateMedication;
+  final Future<void> Function(Medication oldMed, Medication newMed)
+      onUpdateMedication;
   final Future<void> Function(Medication medication) onDeleteMedication;
 
   const _MedicationTrackerSection({
@@ -5123,7 +5192,8 @@ class _MedicationTrackerSection extends StatelessWidget {
                                   getTimeLabel: _getTimeOfDayLabel,
                                   getTimeIcon: _getTimeIcon,
                                   onTap: () => onQuickLogMedication(med),
-                                  onEdit: () => _showEditMedicationDialog(context, med),
+                                  onEdit: () =>
+                                      _showEditMedicationDialog(context, med),
                                   onDelete: () => onDeleteMedication(med),
                                 )),
                           ],
@@ -5326,7 +5396,8 @@ class _MedicationTileState extends State<_MedicationTile> {
 
 /// Dialog for adding a new medication
 class AddMedicationDialog extends StatefulWidget {
-  const AddMedicationDialog({super.key, required this.onSave, this.existingMedication});
+  const AddMedicationDialog(
+      {super.key, required this.onSave, this.existingMedication});
 
   final Future<void> Function(Medication medication) onSave;
   final Medication? existingMedication;
@@ -5349,7 +5420,8 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
       _dosageController.text = widget.existingMedication!.dosage ?? '';
       _selectedTimes = widget.existingMedication!.times.map((timeStr) {
         final parts = timeStr.split(':');
-        return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+        return TimeOfDay(
+            hour: int.parse(parts[0]), minute: int.parse(parts[1]));
       }).toList();
     }
   }
@@ -5454,7 +5526,10 @@ class _AddMedicationDialogState extends State<AddMedicationDialog> {
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.existingMedication == null ? '$name added to your medications' : '$name updated')),
+          SnackBar(
+              content: Text(widget.existingMedication == null
+                  ? '$name added to your medications'
+                  : '$name updated')),
         );
       }
     } catch (e) {

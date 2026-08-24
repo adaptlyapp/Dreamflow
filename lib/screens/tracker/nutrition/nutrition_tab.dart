@@ -491,12 +491,6 @@ class _NutritionTabState extends State<NutritionTab> with AutomaticKeepAliveClie
               type: t,
               meal: log.meals[t] ?? MealLog.empty(t),
               onTap: () => _openMealSheet(t),
-              onToggleCompleted: (v) async {
-                final userId = context.read<UserProvider>().currentUser?.id;
-                if (userId == null) return;
-                await _nutrition.setMealCompleted(userId, _normalizedDay, t, v);
-                await _reload();
-              },
             ),
             SizedBox(height: AppSpacing.sm),
           ],
@@ -1375,13 +1369,11 @@ class _MealCard extends StatelessWidget {
   final MealType type;
   final MealLog meal;
   final VoidCallback onTap;
-  final ValueChanged<bool> onToggleCompleted;
 
   const _MealCard({
     required this.type,
     required this.meal,
     required this.onTap,
-    required this.onToggleCompleted,
   });
 
   @override
@@ -1417,18 +1409,7 @@ class _MealCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(child: Text(type.label, style: text.titleSmall?.semiBold)),
-                      Transform.scale(
-                        scale: 1.05,
-                        child: Switch.adaptive(
-                          value: meal.completed,
-                          onChanged: onToggleCompleted,
-                        ),
-                      )
-                    ],
-                  ),
+                  Text(type.label, style: text.titleSmall?.semiBold),
                   SizedBox(height: 2),
                   Text(
                     hasItems

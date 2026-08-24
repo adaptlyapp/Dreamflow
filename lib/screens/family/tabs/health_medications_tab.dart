@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wellspring/models/tracker_entry.dart';
+import 'package:wellspring/models/user.dart';
 import 'package:wellspring/theme.dart';
 import 'package:intl/intl.dart';
 
@@ -11,9 +12,10 @@ import 'package:intl/intl.dart';
 ///  • Per-medication frequency list with proportional progress bars
 ///  • Timeline of recent logs (grouped by date) with dose + effect chips
 class HealthMedicationsTab extends StatelessWidget {
-  const HealthMedicationsTab({super.key, required this.entries});
+  const HealthMedicationsTab({super.key, required this.entries, this.patientUser});
 
   final List<TrackerEntry> entries;
+  final User? patientUser;
 
   static const Color _accent = Color(0xFF22D3EE);
 
@@ -86,6 +88,94 @@ class HealthMedicationsTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ---- Patient's Current Medications ----
+          if (patientUser != null && patientUser!.medications.isNotEmpty) ...[
+            _SectionHeader(
+              title: 'Current Medications',
+              subtitle: '${patientUser!.medications.length} prescribed medication${patientUser!.medications.length != 1 ? 's' : ''}',
+              icon: Icons.medication_liquid,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            ...patientUser!.medications.map((med) => Container(
+              margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    _accent.withValues(alpha: 0.08),
+                    _accent.withValues(alpha: 0.03),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                  color: _accent.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: _accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Icon(Icons.medication, color: _accent, size: 20),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          med.name,
+                          style: context.textStyles.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (med.dosage != null && med.dosage!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            med.dosage!,
+                            style: context.textStyles.bodyMedium?.withColor(
+                              cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        if (med.times.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: med.times.map((time) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _accent.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                time,
+                                style: context.textStyles.labelSmall?.copyWith(
+                                  color: _accent,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            )).toList(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )),
+            const SizedBox(height: AppSpacing.xl),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          
           // ---- Summary tiles ----
           _SummaryGrid(
             totalDoses: totalDoses,

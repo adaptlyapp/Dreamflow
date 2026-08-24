@@ -1585,12 +1585,156 @@ class _TimedEntry<T> {
   _TimedEntry({required this.value, required this.expiresAt});
 }
 
+extension OpenAIClientCareQuestion on OpenAIClient {
+  /// Generate personalized care advice based on user's question and condition information.
+  /// Returns a map with keys: { answer: string, resources: List<{title, url}> }
+  Future<Map<String, dynamic>> generateCareAnswer({
+    required String question,
+    List<String> patientConditions = const [],
+    String? conditionDetailsSummary,
+  }) async {
+    if (!AiSafetyPolicy.enabled) {
+      throw Exception('AI suggestions are disabled in Settings');
+    }
+    if (!AiSafetyPolicy.allowAnotherCallNow()) {
+      await AiSafetyPolicy.waitForSlot();
+      if (!AiSafetyPolicy.allowAnotherCallNow()) {
+        throw Exception('Too many AI requests — please wait a moment and try again');
+      }
+    }
+
+    String _prompt() {
+      final safeQuestion = AiSafetyPolicy.deidentify 
+          ? PHIRedactor.redact(question) 
+          : question;
+      final safeConditions = patientConditions
+          .map((c) => AiSafetyPolicy.deidentify ? PHIRedactor.redact(c) : c)
+          .toList();
+      final safeDetails = AiSafetyPolicy.deidentify
+          ? PHIRedactor.redact(conditionDetailsSummary ?? '')
+          : (conditionDetailsSummary ?? '');
+
+      final conditionContext = safeConditions.isNotEmpty
+          ? 'Patient conditions: ${safeConditions.join(", ")}'
+          : 'No specific conditions listed';
+
+      final detailsBlock = safeDetails.trim().isNotEmpty
+          ? '\nCondition details:\n$safeDetails'
+          : '';
+
+      return '''
+You are a supportive post-discharge care assistant. Your role is to provide practical, empathetic guidance for recovery care. You must NOT provide medical diagnosis, prescribe treatment, or substitute for professional medical advice.
+
+User question: "$safeQuestion"
+
+Context:
+- $conditionContext$detailsBlock
+
+Task: Provide a warm, practical answer that:
+1. Directly addresses the user's question
+2. Incorporates their specific condition(s) when relevant
+3. Offers concrete, actionable steps they can take
+4. Includes when to contact their care team
+5. Is supportive in tone, not clinical
+6. Does NOT give medical advice or diagnosis
+
+Return JSON with EXACTLY this structure (output as a JSON object only):
+{
+  "answer": "Your comprehensive, personalized answer (2-4 sentences, warm and practical)",
+  "steps": ["3-5 concrete actionable steps specific to their situation"],
+  "whenToContact": "Simple guidance on when to call their care team",
+  "encouragement": "A brief, genuine message of encouragement"
+}
+
+Important:
+- Personalize every response to their specific condition(s)
+- Avoid generic wellness platitudes
+- Keep language accessible and non-clinical
+- Focus on practical home care and daily living
+- Always prioritize safety and recommend professional contact when uncertain
+''';
+    }
+
+    Map<String, dynamic> _makeBody() => {
+      'model': 'gpt-4o',
+      'temperature': 0.6,
+      'response_format': {'type': 'json_object'},
+      'messages': [
+        {
+          'role': 'system',
+          'content': 'You are a compassionate post-discharge care assistant. Output ONLY valid JSON matching the requested schema. No extra text.'
+        },
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'text',
+              'text': _prompt(),
+            }
+          ]
+        }
+      ]
+    };
+
+    int attempt = 0;
+    while (true) {
+      try {
+        final data = await OpenAIClient._invokeOpenAiProxy(_makeBody(), timeout: const Duration(seconds: 20));
+        AiSafetyPolicy.recordCall();
+        final content = data['choices']?[0]?['message']?['content'];
+        String? jsonText;
+        if (content is String) {
+          jsonText = content;
+        } else if (content is List) {
+          try {
+            final buf = StringBuffer();
+            for (final part in content) {
+              final type = part['type'];
+              if (type == 'output_text' || type == 'text') {
+                final t = part['text'];
+                if (t is String) buf.write(t);
+              }
+            }
+            jsonText = buf.isEmpty ? null : buf.toString();
+          } catch (e) {
+            debugPrint('OpenAI content parts parse error (care answer): $e');
+          }
+        }
+
+        if (jsonText != null && jsonText.trim().isNotEmpty) {
+          try {
+            final parsed = Map<String, dynamic>.from(jsonDecode(jsonText) as Map);
+            final result = <String, dynamic>{
+              'answer': (parsed['answer'] ?? '').toString(),
+              'steps': List<String>.from(((parsed['steps'] as List?) ?? const []).map((e) => e.toString())),
+              'whenToContact': (parsed['whenToContact'] ?? '').toString(),
+              'encouragement': (parsed['encouragement'] ?? '').toString(),
+            };
+            if (result['answer'].toString().trim().isEmpty) {
+              throw Exception('Empty answer');
+            }
+            return result;
+          } catch (e) {
+            debugPrint('OpenAI JSON parse error (care answer): $e');
+            throw Exception('Malformed JSON from AI');
+          }
+        }
+        throw Exception('Unexpected response shape');
+      } catch (e) {
+        attempt += 1;
+        if (attempt >= 2) rethrow;
+        await Future.delayed(Duration(milliseconds: 400 * attempt));
+      }
+    }
+  }
+}
+
 extension OpenAIClientDietPlan on OpenAIClient {
-  /// Generates a safe, general 7-day meal plan.
-  ///
-  /// IMPORTANT: The assistant must not diagnose/treat/cure. It should always
-  /// include the medical safety disclaimer.
-  Future<Map<String, dynamic>> generateDietPlan({required Map<String, dynamic> input}) async {
+   /// Generates a safe, general 7-day meal plan.
+   ///
+   /// IMPORTANT: The assistant must not diagnose/treat/cure. It should always
+   /// include the medical safety disclaimer.
+   Future<Map<String, dynamic>> generateDietPlan({required Map<String, dynamic> input}) async {
     if (!AiSafetyPolicy.enabled) throw Exception('AI suggestions are disabled in Settings');
     if (!AiSafetyPolicy.allowAnotherCallNow()) {
       await AiSafetyPolicy.waitForSlot();

@@ -1446,45 +1446,33 @@ export type Database = {
       }
       family_patient_links: {
         Row: {
+          created_at: string | null
           family_member_id: string
           id: string
-          linked_at: string
           patient_id: string
-          patient_nickname: string | null
-          relationship: string
+          patient_name: string
+          relationship: string | null
+          updated_at: string | null
         }
         Insert: {
+          created_at?: string | null
           family_member_id: string
           id?: string
-          linked_at?: string
           patient_id: string
-          patient_nickname?: string | null
-          relationship?: string
+          patient_name: string
+          relationship?: string | null
+          updated_at?: string | null
         }
         Update: {
+          created_at?: string | null
           family_member_id?: string
           id?: string
-          linked_at?: string
           patient_id?: string
-          patient_nickname?: string | null
-          relationship?: string
+          patient_name?: string
+          relationship?: string | null
+          updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "family_patient_links_family_member_id_fkey"
-            columns: ["family_member_id"]
-            isOneToOne: false
-            referencedRelation: "family_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "family_patient_links_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       family_schedule_entries: {
         Row: {

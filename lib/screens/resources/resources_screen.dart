@@ -625,7 +625,7 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
   @override
   Widget build(BuildContext context) {
     // Saved-location removed: no profile sync
-    return Scaffold(
+    return GlassyScaffold(
       body: SafeArea(
         child: Column(
           children: [
