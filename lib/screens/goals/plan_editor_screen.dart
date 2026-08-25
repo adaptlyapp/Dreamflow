@@ -73,6 +73,8 @@ String _breakdownComplexity = '';
 List<Map<String, String>> _breakdownCategories = const [];
 // Initial question context from Ask ARIE
 String _initialQuestionContext = '';
+  bool _didAutoOpenGenerate = false;
+  bool _isGenerateSheetOpen = false;
 
 @override
 void initState() {
@@ -209,13 +211,12 @@ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plan ti
 }
 
 // Auto-open generate modal if coming from Ask ARIE with a question
-if (mounted && _initialQuestionContext.isNotEmpty) {
-WidgetsBinding.instance.addPostFrameCallback((_) {
-if (mounted) {
-_generateWithAI();
-}
-});
-}
+  if (mounted && !_didAutoOpenGenerate && _initialQuestionContext.isNotEmpty) {
+    _didAutoOpenGenerate = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _generateWithAI();
+    });
+  }
 }
 
 Future<void> _addOrEdit({Milestone? existing}) async {
@@ -481,19 +482,26 @@ _sessionSavedToCloud = true;
 }
 
 Future<void> _generateWithAI() async {
-debugPrint('🟢🟢🟢 _generateWithAI() called - opening bottom sheet 🟢🟢🟢');
-debugPrint('[PlanEditor] _generateWithAI: _initialQuestionContext="$_initialQuestionContext"');
-final descCtrl = TextEditingController(text: _initialQuestionContext);
-int count = 5;
-String durationUnit = 'weeks'; // 'weeks' | 'days'
-final durationCtrl = TextEditingController(text: '8');
-await showModalBottomSheet(
-context: context,
-isScrollControlled: true,
-showDragHandle: true,
-isDismissible: true,
-enableDrag: true,
-builder: (ctx) {
+  if (_isGenerateSheetOpen) {
+    debugPrint('[PlanEditor] _generateWithAI ignored: generate sheet already open');
+    return;
+  }
+
+  _isGenerateSheetOpen = true;
+  debugPrint('🟢🟢🟢 _generateWithAI() called - opening bottom sheet 🟢🟢🟢');
+  debugPrint('[PlanEditor] _generateWithAI: _initialQuestionContext="$_initialQuestionContext"');
+  final descCtrl = TextEditingController(text: _initialQuestionContext);
+  int count = 5;
+  String durationUnit = 'weeks'; // 'weeks' | 'days'
+  final durationCtrl = TextEditingController(text: '8');
+  try {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      isDismissible: true,
+      enableDrag: true,
+      builder: (ctx) {
 return StatefulBuilder(builder: (sheetCtx, setLocal) {
 int durationValue() {
 final v = int.tryParse(durationCtrl.text.trim());
@@ -793,11 +801,17 @@ label: Text(_generating ? 'Please wait…' : 'Generate Plan'),
 ),
 ),
 );
-});
-},
-);
-descCtrl.dispose();
-durationCtrl.dispose();
+  });
+  },
+  );
+  } finally {
+    // Clear the Ask ARIE prefill after the first open so repeated _load() calls
+    // don't attempt to re-open or re-prefill.
+    _initialQuestionContext = '';
+    _isGenerateSheetOpen = false;
+    descCtrl.dispose();
+    durationCtrl.dispose();
+  }
 }
 
 List<Map<String, dynamic>> _quickPlan({
