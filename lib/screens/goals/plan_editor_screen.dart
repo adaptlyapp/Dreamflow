@@ -1463,7 +1463,8 @@ Widget build(BuildContext context) {
 final currentIndex = _items.indexWhere((m) => !m.completed);
 return Scaffold(
 backgroundColor: Colors.transparent,
-extendBodyBehindAppBar: true,
+    // Keeping body below the AppBar avoids iOS notch/status-bar clipping.
+    extendBodyBehindAppBar: false,
 appBar: AppBar(
 centerTitle: true,
 automaticallyImplyLeading: false,
@@ -1514,7 +1515,7 @@ fit: StackFit.expand,
 children: [
 const ThemedBackgroundImage(),
 SafeArea(
-top: false,
+            // Let SafeArea handle the notch/status bar inset.
 child: _loading
 ? const Center(child: CenteredLoadingSkeleton())
 : _items.isEmpty

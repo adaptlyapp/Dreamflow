@@ -2191,6 +2191,7 @@ export type Database = {
       }
       messages: {
         Row: {
+          attachments: Json
           content: string
           created_at: string | null
           id: string
@@ -2203,6 +2204,7 @@ export type Database = {
           sender_name: string
         }
         Insert: {
+          attachments?: Json
           content: string
           created_at?: string | null
           id?: string
@@ -2215,6 +2217,7 @@ export type Database = {
           sender_name: string
         }
         Update: {
+          attachments?: Json
           content?: string
           created_at?: string | null
           id?: string
@@ -2231,14 +2234,14 @@ export type Database = {
             foreignKeyName: "messages_receiver_id_fkey"
             columns: ["receiver_id"]
             isOneToOne: false
-            referencedRelation: "users"
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "messages_sender_id_fkey"
             columns: ["sender_id"]
             isOneToOne: false
-            referencedRelation: "users"
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
@@ -3567,6 +3570,66 @@ export type Database = {
           },
         ]
       }
+      shifts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          employee_id: string
+          end_time: string
+          id: string
+          location: string | null
+          recurrence_group_id: string | null
+          role_note: string | null
+          shift_date: string
+          start_time: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          employee_id: string
+          end_time: string
+          id?: string
+          location?: string | null
+          recurrence_group_id?: string | null
+          role_note?: string | null
+          shift_date: string
+          start_time: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string
+          end_time?: string
+          id?: string
+          location?: string | null
+          recurrence_group_id?: string | null
+          role_note?: string | null
+          shift_date?: string
+          start_time?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff: {
         Row: {
           auth_user_id: string | null
@@ -3804,6 +3867,7 @@ export type Database = {
           bladder_success: boolean | null
           bowel_program: boolean | null
           created_at: string | null
+          created_by_user_id: string | null
           custom_fields: Json | null
           date: string
           diastolic_bp: number | null
@@ -3832,6 +3896,7 @@ export type Database = {
           bladder_success?: boolean | null
           bowel_program?: boolean | null
           created_at?: string | null
+          created_by_user_id?: string | null
           custom_fields?: Json | null
           date: string
           diastolic_bp?: number | null
@@ -3860,6 +3925,7 @@ export type Database = {
           bladder_success?: boolean | null
           bowel_program?: boolean | null
           created_at?: string | null
+          created_by_user_id?: string | null
           custom_fields?: Json | null
           date?: string
           diastolic_bp?: number | null
@@ -3884,6 +3950,13 @@ export type Database = {
           weight?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tracker_entries_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tracker_entries_user_id_fkey"
             columns: ["user_id"]

@@ -19,6 +19,16 @@ class HealthVitalsTab extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final familyService = FamilyService();
     
+    // Debug: Log entries info
+    debugPrint('[HealthVitalsTab] Total entries: ${entries.length}');
+    if (entries.isNotEmpty) {
+      final latest = entries.first;
+      debugPrint('[HealthVitalsTab] Latest entry date: ${latest.date}');
+      debugPrint('[HealthVitalsTab] Latest HR: ${latest.heartRate}, BP: ${latest.systolicBP}/${latest.diastolicBP}');
+      debugPrint('[HealthVitalsTab] Latest temp: ${latest.temperature}, weight: ${latest.weight}');
+      debugPrint('[HealthVitalsTab] Latest bladder: ${latest.bladderSuccess}, spasms: ${latest.spasmFrequency}');
+    }
+    
     // Latest entry vitals
     final latest = entries.isNotEmpty ? entries.first : null;
     final latestHR = latest?.heartRate?.toDouble();
@@ -84,11 +94,46 @@ class HealthVitalsTab extends StatelessWidget {
     final sortedActivities = activityCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     
+    // Check if most vitals are missing
+    final missingVitalsCount = [
+      latestHR == null,
+      latestSystolic == null,
+      latestTemp == null,
+      latestWeight == null,
+    ].where((missing) => missing).length;
+    final showInfoBanner = missingVitalsCount >= 3;
+    
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.xl, AppSpacing.lg, AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Info banner if most vitals are missing
+          if (showInfoBanner) ...[
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                  color: cs.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: cs.primary, size: 20),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      "Most vital signs haven't been logged yet. Ask the patient to add health entries with heart rate, blood pressure, temperature, and weight.",
+                      style: context.textStyles.bodySmall?.copyWith(color: cs.onSurface),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           // 6-card grid
           Row(
             children: [
@@ -431,38 +476,44 @@ class _VitalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 18),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: context.textStyles.labelSmall,
-                    overflow: TextOverflow.ellipsis,
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        debugPrint('[VitalCard] $label tapped - Value: $value, Status: $status');
+      },
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: color, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: context.textStyles.labelSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              if (status.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  status,
+                  style: context.textStyles.labelSmall?.copyWith(color: color),
                 ),
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: context.textStyles.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            if (status.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                status,
-                style: context.textStyles.labelSmall?.copyWith(color: color),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );

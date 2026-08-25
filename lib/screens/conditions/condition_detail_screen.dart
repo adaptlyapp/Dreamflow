@@ -146,6 +146,10 @@ class _ConditionDetailScreenState extends State<ConditionDetailScreen> {
               ),
             ),
           ),
+          // Important: let SliverAppBar handle the top safe-area.
+          // Wrapping the whole scroll view in SafeArea can cause inconsistent
+          // results across iOS devices because SliverAppBar is also "primary"
+          // by default (it applies status-bar padding).
           CustomScrollView(
             slivers: [
               _buildHeader(),
@@ -166,37 +170,35 @@ class _ConditionDetailScreenState extends State<ConditionDetailScreen> {
   Widget _buildHeader() {
     return SliverAppBar(
       pinned: true,
+      floating: false,
       backgroundColor: Colors.black,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),
         onPressed: () => context.pop(),
       ),
       title: Text(
-        'Plan • Plan',
-        style: context.textStyles.titleLarge?.copyWith(
+        'Plan • ${_condition?.name ?? 'Plan'}',
+        style: context.textStyles.titleMedium?.copyWith(
           color: Colors.white,
           fontWeight: FontWeight.bold,
         ),
+        overflow: TextOverflow.ellipsis,
       ),
       centerTitle: true,
       actions: [
         IconButton(
           icon: const Icon(Icons.ios_share, color: Color(0xFF1ED3CF), size: 22),
-          onPressed: () {
-            // Share functionality
-          },
+          onPressed: () {},
         ),
         IconButton(
           icon: const Icon(Icons.auto_awesome, color: Color(0xFF1ED3CF), size: 22),
-          onPressed: () {
-            // AI suggestions
-          },
+          onPressed: () {},
         ),
         IconButton(
           icon: const Icon(Icons.check_circle_outline, color: Color(0xFF1ED3CF), size: 22),
-          onPressed: () {
-            // Mark complete
-          },
+          onPressed: () {},
         ),
       ],
     );

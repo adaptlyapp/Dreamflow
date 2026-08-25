@@ -148,6 +148,7 @@ class TrackerService {
             'customFields': item['custom_fields'],
             'createdAt': item['created_at'],
             'updatedAt': item['updated_at'],
+            'createdByUserId': item['created_by_user_id'],
           }))
           .toList();
     } catch (e) {
@@ -205,6 +206,7 @@ class TrackerService {
         'custom_fields': entry.customFields,
         'created_at': entry.createdAt.toIso8601String(),
         'updated_at': entry.updatedAt.toIso8601String(),
+        'created_by_user_id': entry.createdByUserId,
       };
       if (extraFields != null) {
         data.addAll(extraFields);

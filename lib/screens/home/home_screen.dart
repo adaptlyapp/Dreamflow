@@ -1982,8 +1982,8 @@ class _HomeHeaderState extends State<_HomeHeader> {
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 final maxDateWidth =
-                                    (constraints.maxWidth * 0.44)
-                                        .clamp(120.0, 190.0);
+                                    (constraints.maxWidth * 0.52)
+                                        .clamp(140.0, 240.0);
                                 return Row(
                                   children: [
                                     Expanded(
@@ -2181,15 +2181,18 @@ class _TodayPill extends StatelessWidget {
           border:
               Border.all(color: cs.onPrimary.withValues(alpha: 0.24), width: 1),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
+        child: Row(mainAxisSize: MainAxisSize.max, children: [
           Icon(Icons.calendar_month, size: 22, color: cs.onPrimary),
           const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.textStyles.labelLarge?.withColor(cs.onPrimary),
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                text,
+                maxLines: 1,
+                style: context.textStyles.labelLarge?.withColor(cs.onPrimary),
+              ),
             ),
           ),
         ]),

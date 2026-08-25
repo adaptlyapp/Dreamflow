@@ -166,6 +166,7 @@ class TrackerEntry {
   final Map<String, dynamic>? customFields;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? createdByUserId; // User who created this entry (may differ from userId if family member logged it)
 
   TrackerEntry({
     required this.id,
@@ -197,6 +198,7 @@ class TrackerEntry {
     this.customFields,
     required this.createdAt,
     required this.updatedAt,
+    this.createdByUserId,
   });
 
   static List<T>? _decodeList<T>(dynamic value, T Function(Map<String, dynamic>) fromMap) {
@@ -257,6 +259,7 @@ class TrackerEntry {
       updatedAt: (json['updatedAt'] ?? json['updated_at']) is Timestamp 
         ? ((json['updatedAt'] ?? json['updated_at']) as Timestamp).toDate() 
         : DateTime.parse((json['updatedAt'] ?? json['updated_at']) as String),
+      createdByUserId: (json['createdByUserId'] ?? json['created_by_user_id']) as String?,
     );
   }
 
@@ -293,6 +296,7 @@ class TrackerEntry {
     'customFields': mergedCustom.isEmpty ? null : mergedCustom,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
+    if (createdByUserId != null) 'createdByUserId': createdByUserId,
     };
   }
 

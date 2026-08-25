@@ -8,6 +8,7 @@ import 'package:wellspring/models/tracker_entry.dart';
 import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/tracker_service.dart';
 import 'package:wellspring/services/health_service.dart';
+import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/theme.dart';
 import 'package:intl/intl.dart';
 import 'package:wellspring/widgets/skeletons.dart';
@@ -268,7 +269,7 @@ class _TrackerScreenState extends State<TrackerScreen>
                   Padding(
                     padding: EdgeInsets.fromLTRB(
                       AppSpacing.lg,
-                      AppSpacing.md,
+                      AppSpacing.lg,
                       AppSpacing.lg,
                       AppSpacing.lg,
                     ),
@@ -433,6 +434,17 @@ class _TrackerScreenState extends State<TrackerScreen>
     if (diff == 0) return 'Today • $time';
     if (diff == -1) return 'Yesterday • $time';
     return '${DateFormat('EEE, MMM d, yyyy').format(date)} • $time';
+  }
+
+  Future<String> _getCreatorName(String createdByUserId) async {
+    try {
+      final userService = UserService();
+      final user = await userService.getUserById(createdByUserId);
+      return user?.name ?? 'Family Member';
+    } catch (e) {
+      debugPrint('TrackerScreen._getCreatorName error: $e');
+      return 'Family Member';
+    }
   }
 
   Widget _buildStatsCards() => Row(
@@ -909,6 +921,7 @@ class _TrackerScreenState extends State<TrackerScreen>
                 children: recent.map((entry) {
                   final isMedOnly = entry.isMedicationOnlyEntry;
                   final cs = Theme.of(context).colorScheme;
+                  final isCreatedByOther = entry.createdByUserId != null && entry.createdByUserId != userId;
                   return InkWell(
                     splashColor: Colors.transparent,
                     highlightColor: Colors.transparent,
@@ -1026,6 +1039,26 @@ class _TrackerScreenState extends State<TrackerScreen>
                                       ),
                                   ],
                                 ),
+                              ),
+                            ],
+                            // Show creator info if created by someone else
+                            if (isCreatedByOther) ...[
+                              SizedBox(height: AppSpacing.xs),
+                              FutureBuilder<String>(
+                                future: _getCreatorName(entry.createdByUserId!),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData) return const SizedBox.shrink();
+                                  return Row(
+                                    children: [
+                                      Icon(Icons.person_outline, size: 12, color: cs.tertiary),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Logged by ${snapshot.data}',
+                                        style: context.textStyles.labelSmall?.withColor(cs.tertiary),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
                             ],
                           ],

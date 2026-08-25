@@ -22,6 +22,7 @@ import 'package:wellspring/services/notification_service.dart';
 import 'package:wellspring/models/organization.dart';
 import 'package:wellspring/models/hospital.dart';
 import 'package:wellspring/models/vr_agency.dart';
+import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/theme.dart';
 import 'package:wellspring/widgets/brand_logo.dart';
 import 'package:wellspring/widgets/care_question_bubble.dart';
@@ -1603,9 +1604,25 @@ class _SchedulePageState extends State<_SchedulePage> {
         return;
       }
 
-      final blueprint =
-          await _blueprintService.getByUserId(connection.patientId);
       final patient = await _userService.getUserById(connection.patientId);
+      
+      // Get patient's auth user ID from the users table to query blueprints
+      // (recovery_blueprints.user_id references auth.users, not profile users table)
+      String? patientAuthUserId;
+      try {
+        final userRecord = await SupabaseConfig.client
+            .from('users')
+            .select('auth_user_id')
+            .eq('id', connection.patientId)
+            .maybeSingle();
+        patientAuthUserId = userRecord?['auth_user_id'] as String?;
+      } catch (e) {
+        debugPrint('[SchedulePage] Error getting patient auth_user_id: $e');
+      }
+
+      final blueprint = patientAuthUserId != null
+          ? await _blueprintService.getByUserId(patientAuthUserId)
+          : null;
 
       if (mounted) {
         setState(() {
@@ -1931,12 +1948,16 @@ class _SchedulePageState extends State<_SchedulePage> {
       for (final routine in _blueprint!.dailyRoutines) {
         // Get caregiver name if assigned
         String? caregiverName;
-        if (routine.assignedCaregiverId != null) {
-          final caregiver = _blueprint!.careTeam.firstWhere(
-            (c) => c.id == routine.assignedCaregiverId,
-            orElse: () => _blueprint!.careTeam.first,
-          );
-          caregiverName = caregiver.name.split(' ').first; // First name only
+        if (routine.assignedCaregiverId != null && _blueprint!.careTeam.isNotEmpty) {
+          try {
+            final caregiver = _blueprint!.careTeam.firstWhere(
+              (c) => c.id == routine.assignedCaregiverId,
+            );
+            caregiverName = caregiver.name.split(' ').first; // First name only
+          } catch (e) {
+            // No matching caregiver found, leave caregiverName as null
+            debugPrint('[SchedulePage] Caregiver not found for ID: ${routine.assignedCaregiverId}');
+          }
         }
         
         for (final timeStr in routine.timesOfDay) {

@@ -82,6 +82,8 @@ class _FamilyAddHealthLogScreenState extends State<FamilyAddHealthLogScreen> {
     super.dispose();
   }
 
+  User? _currentFamilyUser; // Track the family member creating the entry
+
   Future<void> _loadData() async {
     try {
       setState(() => _loading = true);
@@ -91,6 +93,8 @@ class _FamilyAddHealthLogScreenState extends State<FamilyAddHealthLogScreen> {
         debugPrint('[FamilyAddHealthLog] No current user found');
         return;
       }
+
+      _currentFamilyUser = user; // Store the family member's info
 
       final connection = await _familyService.getPrimaryConnection(user.id);
       if (connection == null) {
@@ -196,6 +200,7 @@ class _FamilyAddHealthLogScreenState extends State<FamilyAddHealthLogScreen> {
         customFields: customFields.isEmpty ? null : customFields,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
+        createdByUserId: _currentFamilyUser?.id, // Track that family member created this entry
       );
 
       await _trackerService.addEntry(entry);

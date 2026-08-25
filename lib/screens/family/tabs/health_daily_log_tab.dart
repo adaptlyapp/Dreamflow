@@ -99,6 +99,32 @@ class _DailyLogCardState extends State<_DailyLogCard> {
                         style: context.textStyles.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       const Spacer(),
+                      // Show indicator if created by family member
+                      if (entry.createdByUserId != null && entry.createdByUserId != entry.userId) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xff2f91ff).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(AppRadius.xs),
+                            border: Border.all(color: const Color(0xff2f91ff).withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.family_restroom, size: 14, color: const Color(0xff2f91ff)),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Family',
+                                style: context.textStyles.labelSmall?.copyWith(
+                                  color: const Color(0xff2f91ff),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       Icon(
                         _expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                         color: cs.onSurface,

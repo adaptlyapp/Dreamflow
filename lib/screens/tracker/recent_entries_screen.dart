@@ -6,6 +6,7 @@ import 'package:wellspring/models/tracker_entry.dart';
 import 'package:wellspring/models/pain_detail.dart';
 import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/tracker_service.dart';
+import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/widgets/skeletons.dart';
 import 'package:wellspring/theme.dart';
 
@@ -215,14 +216,52 @@ String _formatFriendlyDate(DateTime date, DateTime createdAt) {
 }
 
 /// Card for regular tracker entries with health metrics
-class _TrackerEntryCard extends StatelessWidget {
+class _TrackerEntryCard extends StatefulWidget {
   final TrackerEntry entry;
   const _TrackerEntryCard({required this.entry});
 
   @override
+  State<_TrackerEntryCard> createState() => _TrackerEntryCardState();
+}
+
+class _TrackerEntryCardState extends State<_TrackerEntryCard> {
+  String? _creatorName;
+  bool _isLoadingCreator = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCreatorName();
+  }
+
+  Future<void> _loadCreatorName() async {
+    final createdByUserId = widget.entry.createdByUserId;
+    if (createdByUserId == null) return;
+    
+    final currentUserId = context.read<UserProvider>().currentUser?.id;
+    if (createdByUserId == currentUserId) return; // Entry created by patient themselves
+    
+    setState(() => _isLoadingCreator = true);
+    try {
+      final creator = await UserService().getUserById(createdByUserId);
+      if (mounted) {
+        setState(() {
+          _creatorName = creator?.name;
+          _isLoadingCreator = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[RecentEntries] Failed to load creator name: $e');
+      if (mounted) {
+        setState(() => _isLoadingCreator = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final e = entry;
+    final e = widget.entry;
     return InkWell(
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
@@ -258,6 +297,19 @@ class _TrackerEntryCard extends StatelessWidget {
                           _formatFriendlyDate(e.date, e.createdAt),
                           style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
                         ),
+                        if (_creatorName != null) ...[
+                          SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline, size: 12, color: cs.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Logged by $_creatorName',
+                                style: context.textStyles.labelSmall?.withColor(cs.primary),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -349,14 +401,52 @@ class _TrackerEntryCard extends StatelessWidget {
 }
 
 /// Card for nutrition-only entries with a distinct visual style
-class _NutritionEntryCard extends StatelessWidget {
+class _NutritionEntryCard extends StatefulWidget {
   final TrackerEntry entry;
   const _NutritionEntryCard({required this.entry});
 
   @override
+  State<_NutritionEntryCard> createState() => _NutritionEntryCardState();
+}
+
+class _NutritionEntryCardState extends State<_NutritionEntryCard> {
+  String? _creatorName;
+  bool _isLoadingCreator = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCreatorName();
+  }
+
+  Future<void> _loadCreatorName() async {
+    final createdByUserId = widget.entry.createdByUserId;
+    if (createdByUserId == null) return;
+    
+    final currentUserId = context.read<UserProvider>().currentUser?.id;
+    if (createdByUserId == currentUserId) return; // Entry created by patient themselves
+    
+    setState(() => _isLoadingCreator = true);
+    try {
+      final creator = await UserService().getUserById(createdByUserId);
+      if (mounted) {
+        setState(() {
+          _creatorName = creator?.name;
+          _isLoadingCreator = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[RecentEntries] Failed to load creator name: $e');
+      if (mounted) {
+        setState(() => _isLoadingCreator = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final e = entry;
+    final e = widget.entry;
     
     return InkWell(
       splashColor: Colors.transparent,
@@ -393,6 +483,19 @@ class _NutritionEntryCard extends StatelessWidget {
                           _formatFriendlyDate(e.date, e.createdAt),
                           style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
                         ),
+                        if (_creatorName != null) ...[
+                          SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline, size: 12, color: cs.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Logged by $_creatorName',
+                                style: context.textStyles.labelSmall?.withColor(cs.primary),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -423,9 +526,47 @@ class _NutritionEntryCard extends StatelessWidget {
 }
 
 /// Card for medication-only entries with a distinct visual style
-class _MedicationEntryCard extends StatelessWidget {
+class _MedicationEntryCard extends StatefulWidget {
   final TrackerEntry entry;
   const _MedicationEntryCard({required this.entry});
+
+  @override
+  State<_MedicationEntryCard> createState() => _MedicationEntryCardState();
+}
+
+class _MedicationEntryCardState extends State<_MedicationEntryCard> {
+  String? _creatorName;
+  bool _isLoadingCreator = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCreatorName();
+  }
+
+  Future<void> _loadCreatorName() async {
+    final createdByUserId = widget.entry.createdByUserId;
+    if (createdByUserId == null) return;
+    
+    final currentUserId = context.read<UserProvider>().currentUser?.id;
+    if (createdByUserId == currentUserId) return; // Entry created by patient themselves
+    
+    setState(() => _isLoadingCreator = true);
+    try {
+      final creator = await UserService().getUserById(createdByUserId);
+      if (mounted) {
+        setState(() {
+          _creatorName = creator?.name;
+          _isLoadingCreator = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[RecentEntries] Failed to load creator name: $e');
+      if (mounted) {
+        setState(() => _isLoadingCreator = false);
+      }
+    }
+  }
 
   String _formatMedTime(String? isoTime) {
     if (isoTime == null) return '';
@@ -440,7 +581,7 @@ class _MedicationEntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final e = entry;
+    final e = widget.entry;
     final medications = e.medications ?? [];
     final logs = e.medicationLogs ?? [];
     
@@ -479,6 +620,19 @@ class _MedicationEntryCard extends StatelessWidget {
                           _formatFriendlyDate(e.date, e.createdAt),
                           style: context.textStyles.bodySmall?.withColor(cs.onSurfaceVariant),
                         ),
+                        if (_creatorName != null) ...[
+                          SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline, size: 12, color: cs.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Logged by $_creatorName',
+                                style: context.textStyles.labelSmall?.withColor(cs.primary),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
