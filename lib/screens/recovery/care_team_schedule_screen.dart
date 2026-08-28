@@ -53,14 +53,27 @@ class _CareTeamScheduleScreenState extends State<CareTeamScheduleScreen> {
       return;
     }
 
-    // Get the auth user ID for blueprint queries (recovery_blueprints.user_id references auth.users)
-    final authUserId = _supabase.auth.currentUser?.id;
-    if (authUserId == null) {
-      setState(() => _loading = false);
-      return;
+    // Get the patient's auth user ID for blueprint queries
+    // When a family member views this, we need the PATIENT's auth ID, not the family member's
+    String? patientAuthUserId;
+    try {
+      final row = await _supabase
+          .from('users')
+          .select('auth_user_id')
+          .eq('id', patientProfileId)
+          .maybeSingle();
+      patientAuthUserId = row?['auth_user_id'] as String?;
+    } catch (e) {
+      debugPrint('[CareTeamSchedule] Error fetching patient auth ID: $e');
     }
 
-    var bp = await _service.getByUserId(authUserId);
+    // Fallback: if no auth_user_id found, assume patientProfileId might already be the auth ID
+    patientAuthUserId ??= patientProfileId;
+    
+    debugPrint('[CareTeamSchedule] Patient profile ID: $patientProfileId');
+    debugPrint('[CareTeamSchedule] Patient auth user ID: $patientAuthUserId');
+
+    var bp = await _service.getByUserId(patientAuthUserId);
     final patient = await _userService.getUserById(patientProfileId);
 
     debugPrint(
@@ -95,6 +108,77 @@ class _CareTeamScheduleScreenState extends State<CareTeamScheduleScreen> {
       debugPrint('[CareTeamSchedule] _load() completed, setState called');
       debugPrint(
           '[CareTeamSchedule] Connected family members: ${_connectedFamilyMembers.length}');
+    }
+  }
+
+  /// Create an initial schedule for a new family member based on existing daily routines
+  /// This populates their schedule for the next 7 days with routine activities
+  Map<String, List<TimeSlot>> _createInitialScheduleFromRoutines(
+      List<DailyRoutine> routines) {
+    if (routines.isEmpty) return {};
+
+    final schedule = <String, List<TimeSlot>>{};
+    final now = DateTime.now();
+
+    // Create schedule entries for the next 7 days
+    for (int i = 0; i < 7; i++) {
+      final date = now.add(Duration(days: i));
+      final dateKey = DateFormat('yyyy-MM-dd').format(date);
+      final dayName = DateFormat('EEEE').format(date).toLowerCase();
+      
+      // Group activities by period
+      final periodActivities = <String, List<String>>{
+        'morning': [],
+        'afternoon': [],
+        'evening': [],
+        'overnight': [],
+      };
+
+      for (var routine in routines) {
+        // Check if routine is scheduled for this day of week
+        if (routine.daysPerformed.isEmpty ||
+            routine.daysPerformed.any((day) => day.toLowerCase() == dayName)) {
+          // Add routine to appropriate periods based on times
+          for (var timeOfDay in routine.timesOfDay) {
+            final period = _timeToPeriod(timeOfDay);
+            periodActivities[period]!.add('${routine.type} ($timeOfDay)');
+          }
+        }
+      }
+
+      // Create TimeSlots for periods that have activities
+      final slots = periodActivities.entries
+          .where((e) => e.value.isNotEmpty)
+          .map((e) => TimeSlot(period: e.key, activities: e.value))
+          .toList();
+
+      if (slots.isNotEmpty) {
+        schedule[dateKey] = slots;
+      }
+    }
+
+    return schedule;
+  }
+
+  /// Convert a time string like "5:30 AM" to a period (morning/afternoon/evening/overnight)
+  String _timeToPeriod(String time) {
+    try {
+      final hourMatch = RegExp(r'(\d+):?\d*\s*(AM|PM)', caseSensitive: false).firstMatch(time);
+      if (hourMatch == null) return 'morning';
+      
+      final hour = int.parse(hourMatch.group(1)!);
+      final isPM = hourMatch.group(2)!.toUpperCase() == 'PM';
+      
+      int hour24 = hour;
+      if (isPM && hour != 12) hour24 += 12;
+      if (!isPM && hour == 12) hour24 = 0;
+
+      if (hour24 >= 0 && hour24 < 12) return 'morning';
+      if (hour24 >= 12 && hour24 < 17) return 'afternoon';
+      if (hour24 >= 17 && hour24 < 21) return 'evening';
+      return 'overnight';
+    } catch (e) {
+      return 'morning'; // Default fallback
     }
   }
 
@@ -191,6 +275,9 @@ class _CareTeamScheduleScreenState extends State<CareTeamScheduleScreen> {
             final email = familyData['email'] as String?;
 
             // Create a CareTeamMember from this family member
+            // Auto-assign them to existing daily routines so they show slots > 0
+            final initialSchedule = _createInitialScheduleFromRoutines(blueprint.dailyRoutines);
+            
             final member = CareTeamMember(
               id: memberIdInTeam,
               name: name,
@@ -198,7 +285,7 @@ class _CareTeamScheduleScreenState extends State<CareTeamScheduleScreen> {
               email: email,
               roles: ['family'],
               availability: {},
-              schedule: {},
+              schedule: initialSchedule,
             );
 
             newFamilyMembers.add(member);
@@ -1337,10 +1424,6 @@ class _CareTeamScheduleScreenState extends State<CareTeamScheduleScreen> {
               spacing: 12,
               runSpacing: 8,
               children: _blueprint!.careTeam.map((member) {
-                int totalSlots = 0;
-                member.schedule
-                    .forEach((date, slots) => totalSlots += slots.length);
-
                 return Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1363,7 +1446,7 @@ class _CareTeamScheduleScreenState extends State<CareTeamScheduleScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${member.name} ($totalSlots slots)',
+                        member.name,
                         style: context.textStyles.bodySmall
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
@@ -3306,6 +3389,11 @@ class _CareTeamScheduleScreenState extends State<CareTeamScheduleScreen> {
   /// Converts 24-hour time string (e.g., "08:00" or "20:00") to 12-hour format (e.g., "8:00 AM" or "8:00 PM")
   String _convert24To12Hour(String time24) {
     try {
+      // If time already contains AM/PM, return as-is
+      if (time24.toUpperCase().contains('AM') || time24.toUpperCase().contains('PM')) {
+        return time24;
+      }
+      
       final parts = time24.split(':');
       if (parts.length != 2) return time24;
       

@@ -16,7 +16,8 @@ class ConnectedTherapistScreen extends StatefulWidget {
   const ConnectedTherapistScreen({super.key});
 
   @override
-  State<ConnectedTherapistScreen> createState() => _ConnectedTherapistScreenState();
+  State<ConnectedTherapistScreen> createState() =>
+      _ConnectedTherapistScreenState();
 }
 
 class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
@@ -107,7 +108,7 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Care Team'),
+        title: const Text('My Therapist'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
@@ -149,7 +150,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
         // Note type filter
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+          padding: EdgeInsets.symmetric(
+              horizontal: AppSpacing.md, vertical: AppSpacing.sm),
           child: Row(
             children: [
               Padding(
@@ -189,7 +191,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
               : ListView.builder(
                   padding: EdgeInsets.all(AppSpacing.md),
                   itemCount: _filteredNotes.length,
-                  itemBuilder: (context, index) => _buildNoteCard(_filteredNotes[index], cs),
+                  itemBuilder: (context, index) =>
+                      _buildNoteCard(_filteredNotes[index], cs),
                 ),
         ),
       ],
@@ -198,11 +201,16 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
 
   String _noteTypeLabel(NoteType type) {
     switch (type) {
-      case NoteType.session: return 'Session';
-      case NoteType.progress: return 'Progress';
-      case NoteType.observation: return 'Observation';
-      case NoteType.goalUpdate: return 'Goal Update';
-      case NoteType.general: return 'General';
+      case NoteType.session:
+        return 'Session';
+      case NoteType.progress:
+        return 'Progress';
+      case NoteType.observation:
+        return 'Observation';
+      case NoteType.goalUpdate:
+        return 'Goal Update';
+      case NoteType.general:
+        return 'General';
     }
   }
 
@@ -214,7 +222,10 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
       padding: EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [cs.primaryContainer, cs.primaryContainer.withValues(alpha: 0.7)],
+          colors: [
+            cs.primaryContainer,
+            cs.primaryContainer.withValues(alpha: 0.7)
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -228,7 +239,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
               color: cs.onPrimaryContainer.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.medical_services_outlined, color: cs.onPrimaryContainer, size: 32),
+            child: Icon(Icons.medical_services_outlined,
+                color: cs.onPrimaryContainer, size: 32),
           ),
           SizedBox(width: AppSpacing.md),
           Expanded(
@@ -290,7 +302,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: _getNoteTypeColor(note.noteType, cs).withValues(alpha: 0.15),
+                      color: _getNoteTypeColor(note.noteType, cs)
+                          .withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -319,14 +332,16 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                   Expanded(
                     child: Text(
                       'Care Team',
-                      style: context.textStyles.labelSmall?.copyWith(color: cs.outline),
+                      style: context.textStyles.labelSmall
+                          ?.copyWith(color: cs.outline),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Text(
                     dateStr,
-                    style: context.textStyles.labelSmall?.copyWith(color: cs.outline),
+                    style: context.textStyles.labelSmall
+                        ?.copyWith(color: cs.outline),
                   ),
                 ],
               ),
@@ -339,11 +354,16 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
 
   Color _getNoteTypeColor(NoteType type, ColorScheme cs) {
     switch (type) {
-      case NoteType.session: return Colors.purple;
-      case NoteType.progress: return Colors.green;
-      case NoteType.observation: return Colors.orange;
-      case NoteType.goalUpdate: return Colors.blue;
-      case NoteType.general: return cs.primary;
+      case NoteType.session:
+        return Colors.purple;
+      case NoteType.progress:
+        return Colors.green;
+      case NoteType.observation:
+        return Colors.orange;
+      case NoteType.goalUpdate:
+        return Colors.blue;
+      case NoteType.general:
+        return cs.primary;
     }
   }
 
@@ -387,7 +407,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                         if (note.pinned)
                           Padding(
                             padding: EdgeInsets.only(right: AppSpacing.xs),
-                            child: Icon(Icons.push_pin, size: 20, color: cs.primary),
+                            child: Icon(Icons.push_pin,
+                                size: 20, color: cs.primary),
                           ),
                         Expanded(
                           child: Text(
@@ -404,9 +425,11 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                     SizedBox(height: AppSpacing.sm),
                     // Note type badge
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _getNoteTypeColor(note.noteType, cs).withValues(alpha: 0.15),
+                        color: _getNoteTypeColor(note.noteType, cs)
+                            .withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -423,7 +446,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                         CircleAvatar(
                           radius: 14,
                           backgroundColor: cs.primaryContainer,
-                          child: Icon(Icons.person, size: 16, color: cs.onPrimaryContainer),
+                          child: Icon(Icons.person,
+                              size: 16, color: cs.onPrimaryContainer),
                         ),
                         SizedBox(width: AppSpacing.sm),
                         Text(
@@ -437,7 +461,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                     SizedBox(height: AppSpacing.xs),
                     Text(
                       dateStr,
-                      style: context.textStyles.labelSmall?.copyWith(color: cs.outline),
+                      style: context.textStyles.labelSmall
+                          ?.copyWith(color: cs.outline),
                     ),
                   ],
                 ),
@@ -475,7 +500,10 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
           padding: EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [cs.secondaryContainer, cs.secondaryContainer.withValues(alpha: 0.7)],
+              colors: [
+                cs.secondaryContainer,
+                cs.secondaryContainer.withValues(alpha: 0.7)
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -515,7 +543,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                 child: FilterChip(
                   label: const Text('All'),
                   selected: _selectedResourceType == null,
-                  onSelected: (_) => setState(() => _selectedResourceType = null),
+                  onSelected: (_) =>
+                      setState(() => _selectedResourceType = null),
                   selectedColor: cs.secondaryContainer,
                   checkmarkColor: cs.onSecondaryContainer,
                 ),
@@ -527,7 +556,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                   child: FilterChip(
                     label: Text(_resourceTypeLabel(type)),
                     selected: isSelected,
-                    onSelected: (_) => setState(() => _selectedResourceType = type),
+                    onSelected: (_) =>
+                        setState(() => _selectedResourceType = type),
                     selectedColor: cs.secondaryContainer,
                     checkmarkColor: cs.onSecondaryContainer,
                   ),
@@ -543,12 +573,14 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
               ? _buildEmptyState(
                   icon: Icons.library_books_outlined,
                   title: 'No resources yet',
-                  subtitle: 'Resources shared by your care team will appear here',
+                  subtitle:
+                      'Resources shared by your care team will appear here',
                 )
               : ListView.builder(
                   padding: EdgeInsets.all(AppSpacing.md),
                   itemCount: _filteredResources.length,
-                  itemBuilder: (context, index) => _buildResourceCard(_filteredResources[index], cs),
+                  itemBuilder: (context, index) =>
+                      _buildResourceCard(_filteredResources[index], cs),
                 ),
         ),
       ],
@@ -557,12 +589,18 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
 
   String _resourceTypeLabel(PatientResourceType type) {
     switch (type) {
-      case PatientResourceType.exercise: return 'Exercise';
-      case PatientResourceType.pdf: return 'PDF';
-      case PatientResourceType.video: return 'Video';
-      case PatientResourceType.article: return 'Article';
-      case PatientResourceType.link: return 'Link';
-      case PatientResourceType.other: return 'Other';
+      case PatientResourceType.exercise:
+        return 'Exercise';
+      case PatientResourceType.pdf:
+        return 'PDF';
+      case PatientResourceType.video:
+        return 'Video';
+      case PatientResourceType.article:
+        return 'Article';
+      case PatientResourceType.link:
+        return 'Link';
+      case PatientResourceType.other:
+        return 'Other';
     }
   }
 
@@ -617,7 +655,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
               Container(
                 padding: EdgeInsets.all(AppSpacing.sm),
                 decoration: BoxDecoration(
-                  color: _getResourceTypeColor(resource.type, cs).withValues(alpha: 0.15),
+                  color: _getResourceTypeColor(resource.type, cs)
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -655,7 +694,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                     Row(
                       children: [
                         Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: cs.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(4),
@@ -667,12 +707,14 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                         ),
                         if (resource.isFileUpload) ...[
                           SizedBox(width: AppSpacing.sm),
-                          Icon(Icons.cloud_download_outlined, size: 14, color: cs.outline),
+                          Icon(Icons.cloud_download_outlined,
+                              size: 14, color: cs.outline),
                         ],
                         const Spacer(),
                         Text(
                           dateStr,
-                          style: context.textStyles.labelSmall?.copyWith(color: cs.outline),
+                          style: context.textStyles.labelSmall
+                              ?.copyWith(color: cs.outline),
                         ),
                       ],
                     ),
@@ -694,23 +736,35 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
 
   IconData _getResourceTypeIcon(PatientResourceType type) {
     switch (type) {
-      case PatientResourceType.video: return Icons.play_circle_outline;
-      case PatientResourceType.article: return Icons.article_outlined;
-      case PatientResourceType.pdf: return Icons.picture_as_pdf_outlined;
-      case PatientResourceType.exercise: return Icons.fitness_center;
-      case PatientResourceType.link: return Icons.link;
-      case PatientResourceType.other: return Icons.folder_outlined;
+      case PatientResourceType.video:
+        return Icons.play_circle_outline;
+      case PatientResourceType.article:
+        return Icons.article_outlined;
+      case PatientResourceType.pdf:
+        return Icons.picture_as_pdf_outlined;
+      case PatientResourceType.exercise:
+        return Icons.fitness_center;
+      case PatientResourceType.link:
+        return Icons.link;
+      case PatientResourceType.other:
+        return Icons.folder_outlined;
     }
   }
 
   Color _getResourceTypeColor(PatientResourceType type, ColorScheme cs) {
     switch (type) {
-      case PatientResourceType.video: return Colors.red;
-      case PatientResourceType.article: return Colors.blue;
-      case PatientResourceType.pdf: return Colors.deepOrange;
-      case PatientResourceType.exercise: return Colors.green;
-      case PatientResourceType.link: return Colors.purple;
-      case PatientResourceType.other: return cs.primary;
+      case PatientResourceType.video:
+        return Colors.red;
+      case PatientResourceType.article:
+        return Colors.blue;
+      case PatientResourceType.pdf:
+        return Colors.deepOrange;
+      case PatientResourceType.exercise:
+        return Colors.green;
+      case PatientResourceType.link:
+        return Colors.purple;
+      case PatientResourceType.other:
+        return cs.primary;
     }
   }
 
@@ -753,7 +807,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _getResourceTypeColor(resource.type, cs).withValues(alpha: 0.15),
+                    color: _getResourceTypeColor(resource.type, cs)
+                        .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -788,7 +843,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                     CircleAvatar(
                       radius: 14,
                       backgroundColor: cs.secondaryContainer,
-                      child: Icon(Icons.person, size: 16, color: cs.onSecondaryContainer),
+                      child: Icon(Icons.person,
+                          size: 16, color: cs.onSecondaryContainer),
                     ),
                     SizedBox(width: AppSpacing.sm),
                     Text(
@@ -800,24 +856,30 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                 SizedBox(height: 4),
                 Text(
                   'Shared on $dateStr',
-                  style: context.textStyles.labelSmall?.copyWith(color: cs.outline),
+                  style: context.textStyles.labelSmall
+                      ?.copyWith(color: cs.outline),
                 ),
                 // File info
                 if (resource.isFileUpload) ...[
                   SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.insert_drive_file_outlined, size: 14, color: cs.outline),
+                      Icon(Icons.insert_drive_file_outlined,
+                          size: 14, color: cs.outline),
                       SizedBox(width: 4),
                       Text(
                         resource.mimeType ?? 'File',
-                        style: context.textStyles.labelSmall?.copyWith(color: cs.outline),
+                        style: context.textStyles.labelSmall
+                            ?.copyWith(color: cs.outline),
                       ),
                       if (resource.fileSize != null) ...[
-                        Text(' • ', style: context.textStyles.labelSmall?.copyWith(color: cs.outline)),
+                        Text(' • ',
+                            style: context.textStyles.labelSmall
+                                ?.copyWith(color: cs.outline)),
                         Text(
                           _formatFileSize(resource.fileSize!),
-                          style: context.textStyles.labelSmall?.copyWith(color: cs.outline),
+                          style: context.textStyles.labelSmall
+                              ?.copyWith(color: cs.outline),
                         ),
                       ],
                     ],
@@ -828,7 +890,8 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                 if (resource.description != null) ...[
                   Text(
                     'Description',
-                    style: context.textStyles.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                    style: context.textStyles.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   SizedBox(height: AppSpacing.xs),
                   Text(
@@ -846,8 +909,11 @@ class _ConnectedTherapistScreenState extends State<ConnectedTherapistScreen>
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () => _openResourceUrl(resource),
-                      icon: Icon(resource.isFileUpload ? Icons.download : Icons.open_in_new),
-                      label: Text(resource.isFileUpload ? 'Download' : 'Open Link'),
+                      icon: Icon(resource.isFileUpload
+                          ? Icons.download
+                          : Icons.open_in_new),
+                      label: Text(
+                          resource.isFileUpload ? 'Download' : 'Open Link'),
                     ),
                   ),
                 SizedBox(height: AppSpacing.lg),

@@ -107,12 +107,16 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
       final chartData = _familyService.getChartData(recentEntries);
       final alerts = _familyService.detectInfectionSignals(recentEntries);
 
-      // Load goals and milestones for the patient
-      debugPrint('[FamilyDashboard] Fetching goals and milestones...');
-      final activeGoals =
-          await _goalService.getActiveGoals(connection.patientId);
-      final milestones =
-          await _milestoneService.list(userId: connection.patientId);
+      // Load goals and milestones for the patient from journey data
+      debugPrint('[FamilyDashboard] Fetching goals and milestones from journey data...');
+      final journeyData = await _familyService.getJourneyData(connection.patientId);
+      final milestonesData = journeyData['milestones'] as List<Map<String, dynamic>>? ?? [];
+      final goalsData = journeyData['goals'] as List<Map<String, dynamic>>? ?? [];
+      
+      // Convert to model objects
+      final milestones = milestonesData.map((data) => Milestone.fromJson(data)).toList();
+      final activeGoals = goalsData.map((data) => Goal.fromJson(data)).toList();
+      
       debugPrint(
           '[FamilyDashboard] Found ${activeGoals.length} goals, ${milestones.length} milestones');
 

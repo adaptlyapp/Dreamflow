@@ -882,7 +882,7 @@ class ThemedBackgroundImage extends StatelessWidget {
     return Positioned.fill(
       child: Image.asset(
         isDarkMode
-            ? 'assets/images/ChatGPT_Image_Jul_13_2026_08_13_46_AM.png'
+            ? 'assets/images/ChatGPT_Image_Jul_13_2026_08_13_46_AM_1.png'
             : 'assets/images/image-gen-1_6.png',
         fit: BoxFit.cover,
       ),

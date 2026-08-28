@@ -41,6 +41,8 @@ class _TrackerScreenState extends State<TrackerScreen>
   bool _checkingHealth = false;
   Timer? _liveTickTimer;
   int _tabIndex = 0;
+  int _chartPageIndex = 0;
+  final PageController _chartPageController = PageController();
 
   bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -56,6 +58,7 @@ class _TrackerScreenState extends State<TrackerScreen>
   void dispose() {
     _healthService.removeListener(_onHealthDataUpdated);
     _liveTickTimer?.cancel();
+    _chartPageController.dispose();
     super.dispose();
   }
 
@@ -373,7 +376,7 @@ class _TrackerScreenState extends State<TrackerScreen>
                                     ),
                                     SizedBox(height: AppSpacing.lg),
                                     if (_entries.isNotEmpty) ...[
-                                      _buildPainChart(),
+                                      _buildChartsCarousel(),
                                       SizedBox(height: AppSpacing.md),
                                       Divider(
                                         height: 1,
@@ -856,6 +859,827 @@ class _TrackerScreenState extends State<TrackerScreen>
                   ),
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChartsCarousel() {
+    final availableCharts = <String>[];
+    
+    // Check which metrics have data
+    if (_entries.any((e) => e.painLevel != null)) availableCharts.add('Pain');
+    if (_entries.any((e) => e.energyLevel != null)) availableCharts.add('Energy');
+    if (_entries.any((e) => e.sleepQuality != null)) availableCharts.add('Sleep');
+    if (_entries.any((e) => e.heartRate != null)) availableCharts.add('Heart Rate');
+    if (_entries.any((e) => e.systolicBP != null && e.diastolicBP != null)) availableCharts.add('Blood Pressure');
+    if (_entries.any((e) => e.weight != null)) availableCharts.add('Weight');
+    if (_entries.any((e) => e.temperature != null)) availableCharts.add('Temperature');
+    if (_entries.any((e) => e.steps != null)) availableCharts.add('Steps');
+    
+    if (availableCharts.isEmpty) {
+      return _buildEmptyChartState();
+    }
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 300,
+          child: PageView(
+            controller: _chartPageController,
+            onPageChanged: (index) => setState(() => _chartPageIndex = index),
+            children: availableCharts.map((chartType) {
+              switch (chartType) {
+                case 'Pain':
+                  return _buildPainChart();
+                case 'Energy':
+                  return _buildEnergyChart();
+                case 'Sleep':
+                  return _buildSleepChart();
+                case 'Heart Rate':
+                  return _buildHeartRateChart();
+                case 'Blood Pressure':
+                  return _buildBloodPressureChart();
+                case 'Weight':
+                  return _buildWeightChart();
+                case 'Temperature':
+                  return _buildTemperatureChart();
+                case 'Steps':
+                  return _buildStepsChart();
+                default:
+                  return const SizedBox.shrink();
+              }
+            }).toList(),
+          ),
+        ),
+        if (availableCharts.length > 1) ...[
+          SizedBox(height: AppSpacing.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(availableCharts.length, (index) {
+              final isActive = index == _chartPageIndex;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: EdgeInsets.symmetric(horizontal: AppSpacing.xs / 2),
+                width: isActive ? 24 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              );
+            }),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEnergyChart() {
+    final data = _entries.where((e) => e.energyLevel != null).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final trimmed = data.length > 7 ? data.sublist(data.length - 7) : data;
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyles = context.textStyles;
+    final minX = 0.0;
+    final maxX = (trimmed.length - 1).toDouble() == 0.0 ? 1.0 : (trimmed.length - 1).toDouble();
+
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Energy Level (Last 7 Entries)', style: textStyles.titleMedium?.semiBold),
+            SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: 0,
+                  maxY: 10,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 2,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 2,
+                        reservedSize: 30,
+                        getTitlesWidget: (value, meta) {
+                          final v = value.round();
+                          if (v % 2 == 0 && v >= 0 && v <= 10) {
+                            return Text('$v', style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant));
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < trimmed.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: AppSpacing.xs),
+                              child: Text(DateFormat('M/d').format(trimmed[i].date),
+                                  style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant)),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: colorScheme.tertiary,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.energyLevel!.toDouble())).toList(),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: colorScheme.tertiary.withValues(alpha: 0.12),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: colorScheme.tertiary,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSleepChart() {
+    final data = _entries.where((e) => e.sleepQuality != null).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final trimmed = data.length > 7 ? data.sublist(data.length - 7) : data;
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyles = context.textStyles;
+    final minX = 0.0;
+    final maxX = (trimmed.length - 1).toDouble() == 0.0 ? 1.0 : (trimmed.length - 1).toDouble();
+
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Sleep Quality (Last 7 Entries)', style: textStyles.titleMedium?.semiBold),
+            SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: 0,
+                  maxY: 10,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 2,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 2,
+                        reservedSize: 30,
+                        getTitlesWidget: (value, meta) {
+                          final v = value.round();
+                          if (v % 2 == 0 && v >= 0 && v <= 10) {
+                            return Text('$v', style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant));
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < trimmed.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: AppSpacing.xs),
+                              child: Text(DateFormat('M/d').format(trimmed[i].date),
+                                  style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant)),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: Colors.indigo,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.sleepQuality!.toDouble())).toList(),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Colors.indigo.withValues(alpha: 0.12),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: Colors.indigo,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeartRateChart() {
+    final data = _entries.where((e) => e.heartRate != null).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final trimmed = data.length > 7 ? data.sublist(data.length - 7) : data;
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyles = context.textStyles;
+    final minX = 0.0;
+    final maxX = (trimmed.length - 1).toDouble() == 0.0 ? 1.0 : (trimmed.length - 1).toDouble();
+    final values = trimmed.map((e) => e.heartRate!.toDouble()).toList();
+    final minY = (values.reduce((a, b) => a < b ? a : b) - 10).floorToDouble().clamp(40.0, 200.0);
+    final maxY = (values.reduce((a, b) => a > b ? a : b) + 10).ceilToDouble().clamp(60.0, 220.0);
+
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Heart Rate (Last 7 Entries)', style: textStyles.titleMedium?.semiBold),
+            SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: minY,
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          return Text('${value.toInt()} bpm',
+                              style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant));
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < trimmed.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: AppSpacing.xs),
+                              child: Text(DateFormat('M/d').format(trimmed[i].date),
+                                  style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant)),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: Colors.red,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.heartRate!.toDouble())).toList(),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Colors.red.withValues(alpha: 0.12),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: Colors.red,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBloodPressureChart() {
+    final data = _entries.where((e) => e.systolicBP != null && e.diastolicBP != null).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final trimmed = data.length > 7 ? data.sublist(data.length - 7) : data;
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyles = context.textStyles;
+    final minX = 0.0;
+    final maxX = (trimmed.length - 1).toDouble() == 0.0 ? 1.0 : (trimmed.length - 1).toDouble();
+
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Blood Pressure (Last 7 Entries)', style: textStyles.titleMedium?.semiBold),
+            SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: 40,
+                  maxY: 180,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 20,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 40,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          return Text('${value.toInt()}',
+                              style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant));
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < trimmed.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: AppSpacing.xs),
+                              child: Text(DateFormat('M/d').format(trimmed[i].date),
+                                  style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant)),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: Colors.orange,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.systolicBP!.toDouble())).toList(),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: Colors.orange,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: Colors.blue,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.diastolicBP!.toDouble())).toList(),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: Colors.blue,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeightChart() {
+    final data = _entries.where((e) => e.weight != null).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final trimmed = data.length > 7 ? data.sublist(data.length - 7) : data;
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyles = context.textStyles;
+    final minX = 0.0;
+    final maxX = (trimmed.length - 1).toDouble() == 0.0 ? 1.0 : (trimmed.length - 1).toDouble();
+    final values = trimmed.map((e) => e.weight!).toList();
+    final minY = (values.reduce((a, b) => a < b ? a : b) - 2).floorToDouble();
+    final maxY = (values.reduce((a, b) => a > b ? a : b) + 2).ceilToDouble();
+
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Weight (Last 7 Entries)', style: textStyles.titleMedium?.semiBold),
+            SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: minY,
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 45,
+                        getTitlesWidget: (value, meta) {
+                          return Text('${value.toStringAsFixed(1)} kg',
+                              style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant));
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < trimmed.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: AppSpacing.xs),
+                              child: Text(DateFormat('M/d').format(trimmed[i].date),
+                                  style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant)),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: Colors.green,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.weight!)).toList(),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Colors.green.withValues(alpha: 0.12),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: Colors.green,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTemperatureChart() {
+    final data = _entries.where((e) => e.temperature != null).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final trimmed = data.length > 7 ? data.sublist(data.length - 7) : data;
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyles = context.textStyles;
+    final minX = 0.0;
+    final maxX = (trimmed.length - 1).toDouble() == 0.0 ? 1.0 : (trimmed.length - 1).toDouble();
+
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Temperature (Last 7 Entries)', style: textStyles.titleMedium?.semiBold),
+            SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: 35,
+                  maxY: 40,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 1,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          return Text('${value.toStringAsFixed(0)}°C',
+                              style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant));
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < trimmed.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: AppSpacing.xs),
+                              child: Text(DateFormat('M/d').format(trimmed[i].date),
+                                  style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant)),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: Colors.deepOrange,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.temperature!)).toList(),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Colors.deepOrange.withValues(alpha: 0.12),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: Colors.deepOrange,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepsChart() {
+    final data = _entries.where((e) => e.steps != null).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final trimmed = data.length > 7 ? data.sublist(data.length - 7) : data;
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyles = context.textStyles;
+    final minX = 0.0;
+    final maxX = (trimmed.length - 1).toDouble() == 0.0 ? 1.0 : (trimmed.length - 1).toDouble();
+    final values = trimmed.map((e) => e.steps!.toDouble()).toList();
+    final maxY = (values.reduce((a, b) => a > b ? a : b) * 1.2).ceilToDouble();
+
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Steps (Last 7 Entries)', style: textStyles.titleMedium?.semiBold),
+            SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: 0,
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 45,
+                        getTitlesWidget: (value, meta) {
+                          return Text('${(value / 1000).toStringAsFixed(0)}k',
+                              style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant));
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < trimmed.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: AppSpacing.xs),
+                              child: Text(DateFormat('M/d').format(trimmed[i].date),
+                                  style: textStyles.bodySmall?.withColor(colorScheme.onSurfaceVariant)),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      isCurved: true,
+                      barWidth: 3,
+                      color: Colors.purple,
+                      spots: trimmed.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.steps!.toDouble())).toList(),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Colors.purple.withValues(alpha: 0.12),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                          radius: 3,
+                          color: Colors.purple,
+                          strokeWidth: 1,
+                          strokeColor: colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyChartState() {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.textStyles;
+    return Card(
+      child: Padding(
+        padding: AppSpacing.paddingMd,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12)),
+              child:
+                  Icon(Icons.insights_outlined, color: cs.onSurfaceVariant),
+            ),
+            SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('No metric data yet',
+                        style: text.titleSmall?.semiBold),
+                    SizedBox(height: 2),
+                    Text('Add entries with health metrics to see trends here.',
+                        style:
+                            text.bodySmall?.withColor(cs.onSurfaceVariant)),
+                  ]),
             ),
           ],
         ),

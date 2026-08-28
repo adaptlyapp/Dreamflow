@@ -1634,20 +1634,24 @@ Task: Provide a warm, practical answer that:
 1. Directly addresses the user's question
 2. Incorporates their specific condition(s) when relevant
 3. Offers concrete, actionable steps they can take
-4. Includes when to contact their care team
-5. Is supportive in tone, not clinical
-6. Does NOT give medical advice or diagnosis
+4. Recommends specific medical supplies/equipment that could help (when relevant)
+5. Includes when to contact their care team
+6. Is supportive in tone, not clinical
+7. Does NOT give medical advice or diagnosis
 
 Return JSON with EXACTLY this structure (output as a JSON object only):
 {
   "answer": "Your comprehensive, personalized answer (2-4 sentences, warm and practical)",
   "steps": ["3-5 concrete actionable steps specific to their situation"],
+  "products": ["If helpful, list 2-4 specific medical supply products or equipment that could help implement the action steps (e.g., 'Wheelchair cushion for pressure relief', 'Heel protectors to prevent pressure injuries', 'Pressure relief mattress overlay'). ONLY include products that are clearly relevant to the question. Leave empty array if no products would help."],
   "whenToContact": "Simple guidance on when to call their care team",
   "encouragement": "A brief, genuine message of encouragement"
 }
 
 Important:
 - Personalize every response to their specific condition(s)
+- When recommending products, be specific about the type and why it helps
+- Only suggest products that directly address the user's concern
 - Avoid generic wellness platitudes
 - Keep language accessible and non-clinical
 - Focus on practical home care and daily living
@@ -1707,6 +1711,7 @@ Important:
             final result = <String, dynamic>{
               'answer': (parsed['answer'] ?? '').toString(),
               'steps': List<String>.from(((parsed['steps'] as List?) ?? const []).map((e) => e.toString())),
+              'products': List<String>.from(((parsed['products'] as List?) ?? const []).map((e) => e.toString())),
               'whenToContact': (parsed['whenToContact'] ?? '').toString(),
               'encouragement': (parsed['encouragement'] ?? '').toString(),
             };

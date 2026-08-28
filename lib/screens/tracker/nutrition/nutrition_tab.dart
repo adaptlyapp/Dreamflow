@@ -9,14 +9,17 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:wellspring/models/diet_plan.dart';
+import 'package:wellspring/models/family_nutrition.dart';
 import 'package:wellspring/models/nutrition.dart';
 import 'package:wellspring/models/nutrition_hub.dart';
 import 'package:wellspring/openai/openai_config.dart';
 import 'package:wellspring/screens/tracker/nutrition/nutrition_hub_section.dart';
 import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/condition_service.dart';
+import 'package:wellspring/services/food_database_service.dart';
 import 'package:wellspring/services/nutrition_service.dart';
 import 'package:wellspring/services/tracker_service.dart';
+import 'package:wellspring/supabase/supabase_config.dart';
 import 'package:wellspring/theme.dart';
 
 class NutritionTab extends StatefulWidget {
@@ -1625,6 +1628,7 @@ class _MealEditorSheet extends StatefulWidget {
 
 class _MealEditorSheetState extends State<_MealEditorSheet> {
   final _nutrition = NutritionService();
+  final _foodDb = FoodDatabaseService();
   final _name = TextEditingController();
   final _nameFocus = FocusNode();
   final _notes = TextEditingController();
@@ -1640,6 +1644,10 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
   List<FoodItemLog> _recentFoods = const [];
   List<FoodItemLog> _filteredFoods = const [];
   bool _loadingFoods = true;
+
+  List<FoodDatabaseEntry> _dbFoods = const [];
+  bool _loadingDb = true;
+
   List<_RemoteFoodSuggestion> _remoteFoods = const [];
   bool _loadingRemote = false;
   bool _loadingRemoteMore = false;
@@ -1665,7 +1673,20 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
 
     _name.addListener(_onNameChanged);
     _nameFocus.addListener(_onNameFocusChanged);
+    _initFoodDb();
     _loadRecentFoods();
+  }
+
+  Future<void> _initFoodDb() async {
+    try {
+      await _foodDb.initialize();
+    } catch (e) {
+      debugPrint('MealEditorSheet: FoodDatabaseService.initialize error: $e');
+    } finally {
+      if (!mounted) return;
+      setState(() => _loadingDb = false);
+      _refreshSuggestions(_name.text);
+    }
   }
 
   void _onNameFocusChanged() {
@@ -1712,12 +1733,14 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
         final top = _recentFoods.take(8).toList(growable: false);
         setState(() {
           _filteredFoods = top;
+          _dbFoods = const [];
           _remoteFoods = const [];
           _loadingRemote = false;
         });
       } else if (_filteredFoods.isNotEmpty || _remoteFoods.isNotEmpty || _loadingRemote) {
         setState(() {
           _filteredFoods = const [];
+          _dbFoods = const [];
           _remoteFoods = const [];
           _loadingRemote = false;
         });
@@ -1744,7 +1767,18 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
     final local = matches.take(8).toList(growable: false);
     setState(() => _filteredFoods = local);
 
-    // Remote suggestions: search online for any food (fallback).
+    // Local library suggestions: built-in + custom foods.
+    if (!_loadingDb) {
+      try {
+        final db = _foodDb.searchFoods(q, limit: 8);
+        setState(() => _dbFoods = db);
+      } catch (e) {
+        debugPrint('MealEditorSheet: local DB search error: $e');
+        setState(() => _dbFoods = const []);
+      }
+    }
+
+    // Remote suggestions: search online APIs via Supabase Edge Function (CORS-safe).
     if (q.length < 2) {
       _remoteDebounce?.cancel();
       if (_remoteFoods.isNotEmpty || _loadingRemote) {
@@ -1805,20 +1839,15 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
 
     try {
       final page = reset ? 1 : (_remotePage + 1);
-      final uri = Uri.https('world.openfoodfacts.org', '/cgi/search.pl', {
-        'search_terms': q,
-        'search_simple': '1',
-        'action': 'process',
-        'json': '1',
-        'page': page.toString(),
-        'page_size': pageSize.toString(),
-      });
+      final res = await SupabaseConfig.client.functions.invoke(
+        'food_search',
+        body: {'query': q, 'limit': pageSize, 'page': page},
+      );
 
-      final resp = await http.get(uri).timeout(const Duration(seconds: 8));
       if (!mounted || token != _remoteQueryToken) return;
 
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        debugPrint('MealEditorSheet: remote food search failed (${resp.statusCode})');
+      if (res.status != 200) {
+        debugPrint('MealEditorSheet: food_search edge function failed (${res.status})');
         setState(() {
           _remoteFoods = const [];
           _loadingRemote = false;
@@ -1828,9 +1857,9 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
         return;
       }
 
-      final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
-      final products = decoded is Map ? decoded['products'] : null;
-      if (products is! List) {
+      final decoded = res.data;
+      final list = decoded is Map ? decoded['results'] : null;
+      if (list is! List) {
         setState(() {
           _remoteFoods = const [];
           _loadingRemote = false;
@@ -1843,28 +1872,22 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
       final results = <_RemoteFoodSuggestion>[];
       double? d(dynamic v) => v == null ? null : double.tryParse(v.toString());
 
-      for (final p in products) {
-        if (p is! Map) continue;
-        final name = (p['product_name'] ?? p['generic_name'] ?? '').toString().trim();
+      for (final item in list) {
+        if (item is! Map) continue;
+        final name = (item['name'] ?? '').toString().trim();
         if (name.isEmpty) continue;
-        final nutr = p['nutriments'];
-        final nutrMap = nutr is Map ? nutr : const {};
+        final brand = (item['brand'] ?? '').toString().trim();
+        final source = (item['source'] ?? '').toString().trim();
 
-        int? kcal;
-        final kcal100 = d(nutrMap['energy-kcal_100g']);
-        if (kcal100 != null) kcal = kcal100.round();
-        kcal ??= () {
-          final v = d(nutrMap['energy-kcal']);
-          return v == null ? null : v.round();
-        }();
-
-        final protein = d(nutrMap['proteins_100g']);
-        final carbs = d(nutrMap['carbohydrates_100g']);
-        final fats = d(nutrMap['fat_100g']);
-        final fiber = d(nutrMap['fiber_100g']);
-        final sugar = d(nutrMap['sugars_100g']);
-        final sodiumG = d(nutrMap['sodium_100g']);
-        final sodiumMg = sodiumG == null ? null : (sodiumG * 1000).round();
+        final per = item['per100g'];
+        final perMap = per is Map ? per : const {};
+        final kcal = perMap['calories'] == null ? null : int.tryParse(perMap['calories'].toString());
+        final protein = d(perMap['protein_g']);
+        final carbs = d(perMap['carbs_g']);
+        final fats = d(perMap['fats_g']);
+        final fiber = d(perMap['fiber_g']);
+        final sugar = d(perMap['sugar_g']);
+        final sodiumMg = perMap['sodium_mg'] == null ? null : int.tryParse(perMap['sodium_mg'].toString());
 
         // Only include results that can autofill something.
         if (kcal == null && protein == null && carbs == null && fats == null) continue;
@@ -1872,6 +1895,8 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
         results.add(
           _RemoteFoodSuggestion(
             name: name,
+            brand: brand.isEmpty ? null : brand,
+            source: source.isEmpty ? null : source,
             caloriesPer100g: kcal,
             proteinGPer100g: protein,
             carbsGPer100g: carbs,
@@ -1900,7 +1925,7 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
       addUnique(results);
 
       // Heuristic: if the API returned a full page, there might be more.
-      final hasMore = products.length >= pageSize && results.isNotEmpty;
+      final hasMore = list.length >= pageSize && results.isNotEmpty;
       setState(() {
         _remoteQuery = q;
         _remotePage = page;
@@ -1961,6 +1986,24 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
     FocusScope.of(context).nextFocus();
   }
 
+  void _applyDatabaseSuggestion(FoodDatabaseEntry f) {
+    _name.text = f.name;
+    _cal.text = f.macros.calories.toString();
+    _protein.text = _fmt(f.macros.proteinG);
+    _carbs.text = _fmt(f.macros.carbsG);
+    _fats.text = _fmt(f.macros.fatsG);
+    _fiber.text = _fmt(f.macros.fiberG);
+    _sugar.text = _fmt(f.macros.sugarG);
+    _sodium.text = f.macros.sodiumMg.toString();
+    setState(() {
+      _filteredFoods = const [];
+      _dbFoods = const [];
+      _remoteFoods = const [];
+      _loadingRemote = false;
+    });
+    FocusScope.of(context).nextFocus();
+  }
+
   String _fmt(double v) {
     if (v == v.roundToDouble()) return v.toStringAsFixed(0);
     return v.toStringAsFixed(1);
@@ -1981,7 +2024,13 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
     if (s.proteinGPer100g != null) parts.add('${s.proteinGPer100g!.toStringAsFixed(0)}P');
     if (s.carbsGPer100g != null) parts.add('${s.carbsGPer100g!.toStringAsFixed(0)}C');
     if (s.fatsGPer100g != null) parts.add('${s.fatsGPer100g!.toStringAsFixed(0)}F');
-    return parts.isEmpty ? 'Tap to autofill' : '${parts.join(' • ')} (per 100g)';
+    final brand = (s.brand ?? '').trim();
+    final src = (s.source ?? '').trim();
+    final metaParts = <String>[];
+    if (brand.isNotEmpty) metaParts.add(brand);
+    if (src.isNotEmpty) metaParts.add(src);
+    final meta = metaParts.isEmpty ? '' : ' • ${metaParts.join(' • ')}';
+    return parts.isEmpty ? 'Tap to autofill (per 100g)$meta' : '${parts.join(' • ')} (per 100g)$meta';
   }
 
   @override
@@ -2143,8 +2192,10 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
                   ),
                 ),
                 if (_loadingFoods ||
+                    _loadingDb ||
                     _loadingRemote ||
                     _filteredFoods.isNotEmpty ||
+                    _dbFoods.isNotEmpty ||
                     _remoteFoods.isNotEmpty ||
                     (_nameFocus.hasFocus && _name.text.trim().isNotEmpty)) ...[
                   SizedBox(height: AppSpacing.xs),
@@ -2167,9 +2218,11 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
                               child: Text(
                                 _loadingFoods
                                     ? 'Loading your recent foods…'
-                                    : _loadingRemote
-                                        ? 'Searching foods…'
-                                        : 'Suggestions',
+                                    : _loadingDb
+                                        ? 'Loading food library…'
+                                        : _loadingRemote
+                                            ? 'Searching foods…'
+                                            : 'Suggestions',
                                 style: text.labelSmall?.withColor(cs.onSurfaceVariant),
                               ),
                             ),
@@ -2207,8 +2260,35 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
                                     onView: () => _openFoodItemViewer(f),
                                   ),
                               ],
-                              if (!_loadingRemote && _remoteFoods.isNotEmpty) ...[
+                              if (!_loadingDb && _dbFoods.isNotEmpty) ...[
                                 if (_filteredFoods.isNotEmpty) SizedBox(height: AppSpacing.md),
+                                Row(
+                                  children: [
+                                    Icon(Icons.auto_awesome, size: 16, color: cs.onSurfaceVariant),
+                                    SizedBox(width: AppSpacing.xs),
+                                    Expanded(child: Text('From your food library', style: text.labelSmall?.withColor(cs.onSurfaceVariant))),
+                                  ],
+                                ),
+                                SizedBox(height: AppSpacing.sm),
+                                for (final f in _dbFoods)
+                                  _FoodSuggestionTile(
+                                    title: f.name,
+                                    subtitle: '${_macrosLine(f.macros)} • ${f.brand}',
+                                    leadingIcon: Icons.auto_awesome,
+                                    onTap: () => _applyDatabaseSuggestion(f),
+                                    onView: () => _openFoodItemViewer(
+                                      FoodItemLog(
+                                        name: f.name,
+                                        macros: f.macros,
+                                        notes: 'From food library (${f.brand})',
+                                        createdAt: DateTime.now(),
+                                        updatedAt: DateTime.now(),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                              if (!_loadingRemote && _remoteFoods.isNotEmpty) ...[
+                                if (_filteredFoods.isNotEmpty || _dbFoods.isNotEmpty) SizedBox(height: AppSpacing.md),
                                 Row(
                                   children: [
                                     Icon(Icons.public, size: 16, color: cs.onSurfaceVariant),
@@ -2245,7 +2325,7 @@ class _MealEditorSheetState extends State<_MealEditorSheet> {
                             ],
                           ),
                         ),
-                        if (!_loadingFoods && !_loadingRemote && _filteredFoods.isEmpty && _remoteFoods.isEmpty && _name.text.trim().isNotEmpty) ...[
+                        if (!_loadingFoods && !_loadingDb && !_loadingRemote && _filteredFoods.isEmpty && _dbFoods.isEmpty && _remoteFoods.isEmpty && _name.text.trim().isNotEmpty) ...[
                           SizedBox(height: AppSpacing.sm),
                           Text('No matches yet — keep typing or add macros manually.', style: text.labelSmall?.withColor(cs.onSurfaceVariant)),
                         ],
@@ -2702,6 +2782,8 @@ class _FoodItemViewSheet extends StatelessWidget {
 
 class _RemoteFoodSuggestion {
   final String name;
+  final String? brand;
+  final String? source;
   final int? caloriesPer100g;
   final double? proteinGPer100g;
   final double? carbsGPer100g;
@@ -2712,6 +2794,8 @@ class _RemoteFoodSuggestion {
 
   const _RemoteFoodSuggestion({
     required this.name,
+    required this.brand,
+    required this.source,
     required this.caloriesPer100g,
     required this.proteinGPer100g,
     required this.carbsGPer100g,

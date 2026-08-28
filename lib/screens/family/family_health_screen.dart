@@ -518,6 +518,7 @@ class _FamilyHealthScreenState extends State<FamilyHealthScreen>
         // Content
         GlassyScaffold(
           useFamilyBackground: true,
+          useThemedBackground: false,
           appBar: AppBar(
             title: Row(
               mainAxisSize: MainAxisSize.min,

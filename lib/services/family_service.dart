@@ -1056,16 +1056,21 @@ class FamilyService {
       
       final milestones = milestonesData.map((row) => {
         'id': row['id'],
+        'userId': row['user_id'] ?? row['profile_id'] ?? patientId,
         'title': row['title'],
         'description': row['description'],
         'completed': row['completed'] ?? false,
         'dueDate': row['due_date'],
         'conditionId': row['condition_id'],
         'order': row['order'] ?? 0,
+        'helpType': row['help_type'],
+        'createdAt': row['created_at'] ?? DateTime.now().toIso8601String(),
+        'updatedAt': row['updated_at'] ?? DateTime.now().toIso8601String(),
       }).toList();
 
       final goals = goalsData.map((row) => {
         'id': row['id'],
+        'userId': row['user_id'] ?? row['profile_id'] ?? patientId,
         'title': row['title'],
         'description': row['description'],
         'active': row['active'] ?? true,
@@ -1073,6 +1078,9 @@ class FamilyService {
         'progressThisPeriod': row['progress_this_period'] ?? 0,
         'targetPerPeriod': row['target_per_period'] ?? 0,
         'linkedTrackerKey': row['linked_tracker_key'],
+        'conditionId': row['condition_id'],
+        'createdAt': row['created_at'] ?? DateTime.now().toIso8601String(),
+        'updatedAt': row['updated_at'] ?? DateTime.now().toIso8601String(),
       }).toList();
 
       // Fetch user achievements

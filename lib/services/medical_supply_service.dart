@@ -408,6 +408,89 @@ class MedicalSupplyService {
       ),
       iconEmoji: '🛏',
     ),
+    MedicalSupply(
+      id: 'pressure-mattress-overlay',
+      name: 'Pressure Relief Mattress Overlays',
+      category: 'pressure',
+      description:
+          'Specialized mattress overlays and therapeutic support surfaces that redistribute pressure while in bed. Options include foam overlays, alternating pressure mattresses, and low-air-loss systems.',
+      whoUsesIt: 'People who spend extended time in bed and are at risk for pressure injuries, including those with limited mobility or existing wounds.',
+      commonBrands: ['Invacare', 'Drive Medical', 'Proactive Medical', 'ROHO'],
+      resources: [
+        InstructionalResource(
+          title: 'MedlinePlus: Pressure Sores Prevention',
+          url: 'https://medlineplus.gov/pressuresores.html',
+          type: ResourceType.article,
+          description: 'Comprehensive guide on preventing bedsores with positioning and equipment',
+        ),
+        InstructionalResource(
+          title: 'Craig Hospital: Pressure Injury Prevention',
+          url: 'https://craighospital.org/',
+          type: ResourceType.article,
+          description: 'Expert guidance on selecting and using pressure relief surfaces',
+        ),
+        InstructionalResource(
+          title: 'NIH: Preventing Pressure Ulcers',
+          url: 'https://www.nih.gov/',
+          type: ResourceType.website,
+          description: 'Research-based strategies for pressure injury prevention',
+        ),
+      ],
+      maintenance: const MaintenanceInfo(
+        cleaningInstructions: 'Wipe surface with mild disinfectant weekly. Check air pump and connections on powered systems monthly. Keep cover clean and dry.',
+        replacementSchedule: 'Foam overlays: 1-2 years; Powered systems: pump and mattress per manufacturer specs (typically 3-5 years)',
+      ),
+      troubleshooting:
+          'Mattress losing air: Check for leaks, ensure pump is functioning, verify connections are secure.\nStill developing sores: May need higher-level support surface or more frequent repositioning.\nPump too noisy: Ensure it\'s on a stable surface; may need service or replacement.',
+      whereToObtain: const [
+        ObtainmentOption(source: 'DME Supplier', details: 'Requires prescription and documentation of pressure injury risk'),
+        ObtainmentOption(source: 'Hospital Discharge', details: 'Often provided during hospital discharge if medically necessary'),
+      ],
+      insuranceInfo: const InsuranceInfo(
+        coverage: 'Medicare covers with documented medical necessity and physician order. Higher-tech surfaces may require wound care specialist documentation.',
+        tips: 'Document all pressure injury prevention efforts. Take photos of any existing wounds. Higher-level surfaces require detailed justification.',
+      ),
+      iconEmoji: '🛏',
+    ),
+    MedicalSupply(
+      id: 'positioning-pads',
+      name: 'Positioning Cushions & Protective Pads',
+      category: 'pressure',
+      description:
+          'Foam or gel pads designed to protect bony areas such as heels, elbows, knees, and ankles. Includes heel protectors, elbow pads, wedge cushions, and positioning bolsters.',
+      whoUsesIt: 'People at risk for pressure injuries on bony prominences, especially those with limited mobility or sensation.',
+      commonBrands: ['Skil-Care', 'AliMed', 'Posey', 'Drive Medical'],
+      resources: [
+        InstructionalResource(
+          title: 'MedlinePlus: Pressure Sores',
+          url: 'https://medlineplus.gov/pressuresores.html',
+          type: ResourceType.article,
+          description: 'Understanding pressure injury risk areas and prevention strategies',
+        ),
+        InstructionalResource(
+          title: 'Craig Hospital: Positioning and Skin Care',
+          url: 'https://craighospital.org/',
+          type: ResourceType.article,
+          description: 'Practical tips for using cushions and pads effectively',
+        ),
+      ],
+      maintenance: const MaintenanceInfo(
+        cleaningInstructions: 'Wipe covers with mild soap and water. Machine wash removable covers per label instructions. Air dry thoroughly.',
+        replacementSchedule: 'Replace when foam compresses or covers become worn (typically 6-12 months with daily use)',
+      ),
+      troubleshooting:
+          'Pads slipping off: Try different sizes or styles with straps/covers.\nRedness still appearing: Reposition more frequently, ensure proper pad placement, or consult healthcare provider.',
+      whereToObtain: const [
+        ObtainmentOption(source: 'DME Supplier', details: 'Available with prescription'),
+        ObtainmentOption(source: 'Medical Supply Store', details: 'Many items available without prescription'),
+        ObtainmentOption(source: 'Online Retailers', details: 'Amazon, Allegro Medical, and specialty suppliers'),
+      ],
+      insuranceInfo: const InsuranceInfo(
+        coverage: 'Some insurance plans cover with prescription and documented risk. Medicare may cover if part of a pressure injury treatment plan.',
+        tips: 'Start with heel protectors and elbow pads for high-risk areas. Many affordable options available over-the-counter.',
+      ),
+      iconEmoji: '🛏',
+    ),
 
     // ========== DAILY LIVING ==========
     MedicalSupply(

@@ -37,6 +37,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
   bool _isSearching = false;
   String? _answer;
   List<String> _answerSteps = [];
+  List<String> _products = [];
   String? _whenToContact;
   String? _encouragement;
   List<EducationResource> _relatedResources = [];
@@ -76,6 +77,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
       setState(() => _expanded = false);
       _answer = null;
       _answerSteps = [];
+      _products = [];
       _whenToContact = null;
       _encouragement = null;
       _relatedResources = [];
@@ -86,6 +88,8 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
+        isDismissible: false,
+        enableDrag: false,
         backgroundColor: Colors.transparent,
         builder: (modalContext) => _AskArieModal(
           bubbleState: this,
@@ -96,6 +100,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
               setState(() => _expanded = false);
               _answer = null;
               _answerSteps = [];
+              _products = [];
               _whenToContact = null;
               _encouragement = null;
               _relatedResources = [];
@@ -117,6 +122,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
         if (mounted) {
           _answer = null;
           _answerSteps = [];
+          _products = [];
           _whenToContact = null;
           _encouragement = null;
           _relatedResources = [];
@@ -133,6 +139,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
       _isSearching = true;
       _answer = null;
       _answerSteps = [];
+      _products = [];
       _whenToContact = null;
       _encouragement = null;
       _relatedResources = [];
@@ -185,6 +192,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
         setState(() {
           _answer = aiResponse['answer'] as String?;
           _answerSteps = List<String>.from(aiResponse['steps'] as List? ?? []);
+          _products = List<String>.from(aiResponse['products'] as List? ?? []);
           _whenToContact = aiResponse['whenToContact'] as String?;
           _encouragement = aiResponse['encouragement'] as String?;
           _relatedResources = resources;
@@ -198,6 +206,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
           _answer = 'I\'m having trouble generating a response right now. '
               'Please try again in a moment, or contact your care team with specific questions.';
           _answerSteps = [];
+          _products = [];
           _whenToContact = null;
           _encouragement = null;
           _isSearching = false;
@@ -355,81 +364,110 @@ class _AskArieModalState extends State<_AskArieModal> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final bubble = widget.bubbleState;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final safeTopPadding = MediaQuery.of(context).padding.top;
+
+    // Calculate height accounting for keyboard
+    final minHeight = keyboardHeight > 0 
+        ? screenHeight - safeTopPadding - 50  // Leave small gap at top when keyboard is up
+        : screenHeight * 0.7;  // Take up 70% of screen when keyboard is hidden
+    
+    final maxHeight = keyboardHeight > 0 
+        ? screenHeight - safeTopPadding - 50
+        : screenHeight * 0.9;
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: EdgeInsets.only(bottom: keyboardHeight),
       child: Container(
         decoration: BoxDecoration(
           color: colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.9,
+          minHeight: minHeight,
+          maxHeight: maxHeight,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [colorScheme.primary, colorScheme.tertiary],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+            // Drag handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 4),
+                width: 32,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.psychology, color: colorScheme.onPrimary, size: 24),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+            ),
+            // Header (fixed at top)
+            Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [colorScheme.primary, colorScheme.tertiary],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.psychology, color: colorScheme.onPrimary, size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Ask ARIE',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: colorScheme.onPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (bubble.widget.isFamily && bubble.widget.patientId != null)
                         Text(
-                          'Ask ARIE',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: colorScheme.onPrimary,
-                            fontWeight: FontWeight.bold,
+                          'Personalized care advice',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onPrimary.withValues(alpha: 0.9),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (bubble.widget.isFamily && bubble.widget.patientId != null)
-                          Text(
-                            'Personalized care advice',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onPrimary.withValues(alpha: 0.9),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                    ),
+                    ],
                   ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: colorScheme.onPrimary, size: 20),
-                    onPressed: widget.onClose,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
-                ],
-              ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close, color: colorScheme.onPrimary, size: 20),
+                  onPressed: widget.onClose,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+              ],
             ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+          ),
+          // Scrollable content
+          Flexible(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: keyboardHeight > 0 ? 16 : 16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                     // Question input
                     TextField(
                       controller: bubble._questionController,
@@ -545,6 +583,40 @@ class _AskArieModalState extends State<_AskArieModal> {
                                  ),
                                )),
                              ],
+                             if (bubble._products.isNotEmpty) ...[
+                               const SizedBox(height: 12),
+                               Text(
+                                 'Helpful Products:',
+                                 style: theme.textTheme.labelMedium?.copyWith(
+                                   color: colorScheme.onPrimaryContainer,
+                                   fontWeight: FontWeight.bold,
+                                 ),
+                               ),
+                               const SizedBox(height: 8),
+                               ...bubble._products.map((product) => Padding(
+                                 padding: const EdgeInsets.only(bottom: 8),
+                                 child: Row(
+                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                   children: [
+                                     Icon(
+                                       Icons.medical_services_outlined,
+                                       size: 16,
+                                       color: colorScheme.onPrimaryContainer,
+                                     ),
+                                     const SizedBox(width: 8),
+                                     Expanded(
+                                       child: Text(
+                                         product,
+                                         style: theme.textTheme.bodySmall?.copyWith(
+                                           color: colorScheme.onPrimaryContainer,
+                                           height: 1.4,
+                                         ),
+                                       ),
+                                     ),
+                                   ],
+                                 ),
+                               )),
+                             ],
                              if (bubble._whenToContact != null && bubble._whenToContact!.isNotEmpty) ...[
                                const SizedBox(height: 12),
                                Container(
@@ -585,7 +657,6 @@ class _AskArieModalState extends State<_AskArieModal> {
                                    height: 1.4,
                                  ),
                                ),
-                             ],
                                // Create plan button
                                const SizedBox(height: 16),
                                 ElevatedButton.icon(
@@ -635,6 +706,7 @@ class _AskArieModalState extends State<_AskArieModal> {
                                     foregroundColor: colorScheme.onPrimary,
                                   ),
                                 ),
+                             ],
                            ],
                          ),
                        ),
