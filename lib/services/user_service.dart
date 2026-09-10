@@ -89,9 +89,25 @@ class UserService {
       final url = _oauthRedirectTo();
       debugPrint('[UserService] signInWithGoogle: redirectTo URL = $url');
       debugPrint('[UserService] signInWithGoogle: Calling auth.signInWithOAuth...');
+
+      // iOS NOTE:
+      // - Google blocks OAuth inside embedded webviews.
+      // - Using the system browser/ASWebAuthenticationSession avoids the
+      //   "email/phone + password" fallback UI and prevents the blank/white
+      //   in-app sheet that must be manually closed.
+      // - prompt=select_account forces an account picker even when a Google
+      //   session exists.
+      final launchMode = (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+          ? LaunchMode.externalApplication
+          : LaunchMode.platformDefault;
+
       await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: url,
+        authScreenLaunchMode: launchMode,
+        queryParams: const {
+          'prompt': 'select_account',
+        },
       );
       debugPrint('[UserService] signInWithGoogle: signInWithOAuth completed (should have redirected on web)');
     } on AuthException catch (e) {

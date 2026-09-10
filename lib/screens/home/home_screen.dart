@@ -1546,6 +1546,8 @@ class _HomeScreenState extends State<HomeScreen>
                       onSubmitFeedback: _openSubmitFeedback,
                       onOpenTherapist: () => context.push('/therapist'),
                       onOpenEducation: () => context.push('/education'),
+                      onOpenCommunity: () => context.push('/communities'),
+                      onOpenResources: () => context.push('/resources'),
                       onContactSupport: _openContactSupport,
                     ),
                     Expanded(
@@ -1876,6 +1878,8 @@ class _HomeHeader extends StatefulWidget {
   final VoidCallback onSubmitFeedback;
   final VoidCallback onOpenTherapist;
   final VoidCallback onOpenEducation;
+  final VoidCallback onOpenCommunity;
+  final VoidCallback onOpenResources;
   final VoidCallback onContactSupport;
 
   const _HomeHeader({
@@ -1884,6 +1888,8 @@ class _HomeHeader extends StatefulWidget {
     required this.onSubmitFeedback,
     required this.onOpenTherapist,
     required this.onOpenEducation,
+    required this.onOpenCommunity,
+    required this.onOpenResources,
     required this.onContactSupport,
   });
 
@@ -2058,6 +2064,26 @@ class _HomeHeaderState extends State<_HomeHeader> {
                                             icon: Icons.menu_book_outlined,
                                             label: 'Education',
                                             onTap: widget.onOpenEducation,
+                                            bgColor: cs.onPrimary
+                                                .withValues(alpha: 0.12),
+                                            fgColor: cs.onPrimary,
+                                            borderColor: cs.onPrimary
+                                                .withValues(alpha: 0.20),
+                                          ),
+                                          _QuickActionButton(
+                                            icon: Icons.groups_2_outlined,
+                                            label: 'Community',
+                                            onTap: widget.onOpenCommunity,
+                                            bgColor: cs.onPrimary
+                                                .withValues(alpha: 0.12),
+                                            fgColor: cs.onPrimary,
+                                            borderColor: cs.onPrimary
+                                                .withValues(alpha: 0.20),
+                                          ),
+                                          _QuickActionButton(
+                                            icon: Icons.travel_explore_outlined,
+                                            label: 'Resources',
+                                            onTap: widget.onOpenResources,
                                             bgColor: cs.onPrimary
                                                 .withValues(alpha: 0.12),
                                             fgColor: cs.onPrimary,
