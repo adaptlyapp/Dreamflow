@@ -28,6 +28,8 @@ class NotificationService {
 
   bool _initialized = false;
 
+  String? _activeRole;
+
   static const String medicationChannelId = 'med_reminders';
   static const String goalChannelId = 'goal_reminders';
   static const String milestoneChannelId = 'milestone_reminders';
@@ -121,6 +123,81 @@ class NotificationService {
           'NOTE: Notifications only work on real iOS/Android devices, not in web preview.');
     } catch (e) {
       debugPrint('❌ NotificationService: init error: $e');
+    }
+  }
+
+  /// Enforces that this device only keeps scheduled notifications relevant to
+  /// the currently logged-in portal.
+  ///
+  /// Why: On iOS especially, scheduled local notifications persist across
+  /// sessions. If a user signs out of Patient and signs into Family (or vice
+  /// versa) on the same device, old scheduled reminders can keep firing.
+  ///
+  /// Call this whenever the auth/user context changes (e.g., after loadUser(),
+  /// after logout).
+  Future<void> setActiveRole(String? role) async {
+    _activeRole = role;
+    await init();
+
+    // Nothing logged in: wipe everything scheduled.
+    if (role == null || role.isEmpty) {
+      await cancelAllScheduled();
+      return;
+    }
+
+    // Patient portal should not receive family reminders.
+    if (role == 'patient') {
+      await _cancelScheduledWhere((p) {
+        final payload = p.payload;
+        final isFamilyPayload = payload != null && payload.startsWith('family_med|');
+        final isFamilyId = p.id >= _familyBase && p.id < _engagementBase;
+        return isFamilyPayload || isFamilyId;
+      });
+      return;
+    }
+
+    // Family portal should not receive patient reminders (meds/goals/milestones/engagement).
+    if (role == 'family') {
+      await _cancelScheduledWhere((p) {
+        final payload = p.payload;
+        final isPatientMedPayload = payload != null && payload.startsWith('med|');
+        final isEngagementPayload = payload != null && payload.startsWith('engagement|');
+
+        final isPatientRange = p.id >= _medBase && p.id < _familyBase;
+        final isEngagementRange = p.id >= _engagementBase;
+        return isPatientMedPayload || isEngagementPayload || isPatientRange || isEngagementRange;
+      });
+    }
+  }
+
+  Future<void> cancelAllScheduled() async {
+    await init();
+    try {
+      await _plugin.cancelAll();
+      debugPrint('NotificationService: canceled ALL scheduled notifications');
+    } catch (e) {
+      debugPrint('NotificationService.cancelAllScheduled error: $e');
+    }
+  }
+
+  Future<void> _cancelScheduledWhere(
+    bool Function(PendingNotificationRequest p) predicate,
+  ) async {
+    await init();
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      int canceled = 0;
+      for (final p in pending) {
+        if (!predicate(p)) continue;
+        try {
+          await _plugin.cancel(id: p.id);
+          canceled++;
+        } catch (_) {}
+      }
+      debugPrint(
+          'NotificationService: role=$_activeRole canceled $canceled stale scheduled notifications');
+    } catch (e) {
+      debugPrint('NotificationService._cancelScheduledWhere error: $e');
     }
   }
 

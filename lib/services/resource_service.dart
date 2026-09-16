@@ -9,10 +9,8 @@ import 'package:wellspring/supabase/supabase_config.dart';
 
 class ResourceService {
   static const String _resourcesKey = 'resources_data';
-  // WARNING: Client-side API key usage is suitable for testing only.
-  // Restrict this key in Google Cloud Console to your preview domain.
-  // For production, proxy requests through a secure backend (e.g., Firebase Functions).
-  static const String _googlePlacesKey = 'AIzaSyA3iFM7lQ4Pu7gn8U19kk4Pr6cmVXOm244';
+  // NOTE: Google Places calls should be proxied through Supabase Edge Functions.
+  // We intentionally do NOT keep a client-side Google API key here.
 
   // Shared HTTP client for keep-alive and connection reuse
   static final http.Client _client = http.Client();
@@ -22,6 +20,8 @@ class ResourceService {
 
   // Simple in-memory cache with TTL and LRU eviction for faster repeat queries
   static final _searchCache = _MemoryCache<List<Resource>>(maxEntries: 50, ttl: const Duration(minutes: 10));
+  // Legacy cache used by the now-removed client-side Place Details enrichment.
+  // Kept to avoid larger refactors; can be removed after we fully migrate UI.
   static final _detailsCache = _MemoryCache<Map<String, String>>(maxEntries: 200, ttl: const Duration(hours: 1));
 
   bool get _isWeb => kIsWeb;
@@ -73,6 +73,7 @@ class ResourceService {
     String? region,
     String? rankBy,
     List<String>? includeGoogleTypes,
+    int? userAge,
   }) {
     final sb = StringBuffer('v5'); // bump to invalidate old keys
     sb
@@ -106,6 +107,8 @@ class ResourceService {
       ..write(rankBy ?? '')
       ..write('|gtypes=')
       ..write((includeGoogleTypes == null || includeGoogleTypes.isEmpty) ? '' : (List.of(includeGoogleTypes)..sort()).join(','))
+      ..write('|age=')
+      ..write(userAge?.toString() ?? '')
       ..write('|conds=')
       ..write((conditions == null || conditions.isEmpty) ? '' : (List.of(conditions)..sort()).join(','));
     return sb.toString();
@@ -150,6 +153,8 @@ class ResourceService {
     String? region, // e.g., 'US' for country bias (TextSearch)
     String? rankBy, // 'distance' | 'prominence' (Nearby)
     List<String>? includeGoogleTypes, // explicit Google place types
+    // Personalization/safety
+    int? userAge,
   }) async {
     // Cache check first
     final cacheKey = _cacheKeyForSearch(
@@ -169,6 +174,7 @@ class ResourceService {
       region: region,
       rankBy: rankBy,
       includeGoogleTypes: includeGoogleTypes,
+      userAge: userAge,
     );
     final cached = _searchCache.get(cacheKey);
     if (cached != null) {
@@ -183,7 +189,7 @@ class ResourceService {
     if (userLat != null && userLng != null) {
       // 1) Try Google Places
       try {
-        final gp = await _fetchNearbyFromGooglePlaces(
+        final gp = await _fetchDiversifiedFromGooglePlaces(
           userLat: userLat,
           userLng: userLng,
           query: query,
@@ -199,10 +205,15 @@ class ResourceService {
           rankBy: rankBy,
           includeGoogleTypes: includeGoogleTypes,
         );
-        if (gp.isNotEmpty) {
+        final filteredGp = _postFilterGooglePlacesResults(
+          gp,
+          query: query,
+          userAge: userAge,
+        );
+        if (filteredGp.isNotEmpty) {
           // Merge curated resources nearby
           final merged = await _mergeWithCurated(
-            base: gp,
+            base: filteredGp,
             userLat: userLat,
             userLng: userLng,
             maxDistanceMiles: maxDistance,
@@ -271,6 +282,44 @@ class ResourceService {
       }
     }
 
+    // If we don't have coordinates, but we *do* have a preferred location label
+    // (city / ZIP / address), we can still use Google Places Text Search. This is
+    // useful when the user denies OS location permission but still wants nearby-ish
+    // results based on their preferred area.
+    if ((userLat == null || userLng == null) && location != null && location.trim().isNotEmpty) {
+      try {
+        final gp = await _fetchGooglePlacesViaEdge(
+          userLat: null,
+          userLng: null,
+          preferredLocationText: location.trim(),
+          query: query,
+          typeFilter: type,
+          maxDistance: maxDistance,
+          openNow: openNow,
+          minRating: minRating,
+          minUserRatings: minUserRatings,
+          includeGoogleTypes: includeGoogleTypes,
+          sortByRating: sortByRating,
+          language: language,
+          region: region,
+          mode: 'textsearch',
+        );
+        final filteredGp = _postFilterGooglePlacesResults(
+          gp,
+          query: query,
+          userAge: userAge,
+        );
+        if (filteredGp.isNotEmpty) {
+          debugPrint('ResourceService: returning ${filteredGp.length} Google Places results by preferred location');
+          _searchCache.set(cacheKey, filteredGp);
+          return filteredGp;
+        }
+      } catch (e, st) {
+        hadNetworkFailure = true;
+        debugPrint('ResourceService: Google Places (preferred location) fetch failed: $e\n$st');
+      }
+    }
+
     // Also try curated resources even if live results are empty or coords missing
     List<Resource> curated = [];
     if (userLat != null && userLng != null) {
@@ -292,7 +341,10 @@ class ResourceService {
     return curated;
   }
 
-  /// Geocode a free-form address/city/ZIP. Tries Google first, then falls back to Nominatim.
+  /// Geocode a free-form address/city/ZIP.
+  ///
+  /// NOTE: We intentionally avoid calling Google Geocoding directly from the
+  /// client because API keys should not be shipped in the app.
   /// Returns {
   ///   'lat': double,
   ///   'lng': double,
@@ -302,82 +354,12 @@ class ResourceService {
   /// } on success; null otherwise.
   Future<Map<String, dynamic>?> geocodeAddress(String query) async {
     Map<String, dynamic>? result;
-    // Prefer Google unless we are on web and get blocked by CORS
-    try {
-      result = await _geocodeWithGoogle(query);
-    } catch (e, st) {
-      debugPrint('ResourceService: geocode (Google) error: $e\n$st');
-    }
-    if (result != null) return result;
-    // Fallback to Nominatim (no key, generally CORS-friendly)
     try {
       result = await _geocodeWithNominatim(query);
     } catch (e, st) {
       debugPrint('ResourceService: geocode (Nominatim) error: $e\n$st');
     }
     return result;
-  }
-
-  Future<Map<String, dynamic>?> _geocodeWithGoogle(String query) async {
-    final params = <String, String>{
-      'key': _googlePlacesKey,
-      'address': query,
-    };
-    final uri = Uri.https('maps.googleapis.com', '/maps/api/geocode/json', params);
-    debugPrint('ResourceService: geocoding "$query" (Google)');
-    final resp = await _client.get(uri).timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) {
-      debugPrint('ResourceService: geocode status ${resp.statusCode}: ${resp.body}');
-      return null;
-    }
-    final decoded = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-    final status = decoded['status'] as String?;
-    if (status != 'OK') {
-      debugPrint('ResourceService: geocode returned status=$status, message=${decoded['error_message']}');
-      return null;
-    }
-    final results = (decoded['results'] as List<dynamic>? ?? []);
-    if (results.isEmpty) return null;
-    final first = results.first as Map<String, dynamic>;
-    final geometry = first['geometry'] as Map<String, dynamic>?;
-    final loc = geometry != null ? geometry['location'] as Map<String, dynamic>? : null;
-    final lat = (loc?['lat'] is num) ? (loc!['lat'] as num).toDouble() : null;
-    final lng = (loc?['lng'] is num) ? (loc!['lng'] as num).toDouble() : null;
-    final label = (first['formatted_address'] ?? '').toString();
-    Map<String, dynamic>? viewportOut;
-    try {
-      final viewport = geometry?['viewport'] as Map<String, dynamic>?;
-      if (viewport != null) {
-        final ne = viewport['northeast'] as Map<String, dynamic>?;
-        final sw = viewport['southwest'] as Map<String, dynamic>?;
-        final neLat = (ne?['lat'] is num) ? (ne!['lat'] as num).toDouble() : null;
-        final neLng = (ne?['lng'] is num) ? (ne!['lng'] as num).toDouble() : null;
-        final swLat = (sw?['lat'] is num) ? (sw!['lat'] as num).toDouble() : null;
-        final swLng = (sw?['lng'] is num) ? (sw!['lng'] as num).toDouble() : null;
-        if (neLat != null && neLng != null && swLat != null && swLng != null) {
-          viewportOut = {'neLat': neLat, 'neLng': neLng, 'swLat': swLat, 'swLng': swLng};
-        }
-      }
-    } catch (_) {}
-    String? countryCode;
-    try {
-      final comps = (first['address_components'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
-      for (final c in comps) {
-        final types = (c['types'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
-        if (types.contains('country')) {
-          countryCode = (c['short_name'] ?? '').toString();
-          break;
-        }
-      }
-    } catch (_) {}
-    if (lat == null || lng == null) return null;
-    return {
-      'lat': lat,
-      'lng': lng,
-      'label': label.isNotEmpty ? label : query,
-      if (viewportOut != null) 'viewport': viewportOut,
-      if (countryCode != null && countryCode!.isNotEmpty) 'countryCode': countryCode,
-    };
   }
 
   Future<Map<String, dynamic>?> _geocodeWithNominatim(String query) async {
@@ -439,6 +421,124 @@ class ResourceService {
   double _toRad(double deg) => deg * math.pi / 180.0;
 
   // --- Live data via Google Places Nearby Search ---
+  Future<List<Resource>> _fetchDiversifiedFromGooglePlaces({
+    required double userLat,
+    required double userLng,
+    String? query,
+    String? typeFilter,
+    double? maxDistanceMiles,
+    bool? openNow,
+    double? minRating,
+    int? minUserRatings,
+    List<int>? priceLevels,
+    bool sortByRating = false,
+    String? language,
+    String? region,
+    String? rankBy,
+    List<String>? includeGoogleTypes,
+  }) async {
+    final q = (query ?? '').trim();
+    if (q.isEmpty) {
+      return _fetchNearbyFromGooglePlaces(
+        userLat: userLat,
+        userLng: userLng,
+        query: query,
+        typeFilter: typeFilter,
+        maxDistanceMiles: maxDistanceMiles,
+        openNow: openNow,
+        minRating: minRating,
+        minUserRatings: minUserRatings,
+        priceLevels: priceLevels,
+        sortByRating: sortByRating,
+        language: language,
+        region: region,
+        rankBy: rankBy,
+        includeGoogleTypes: includeGoogleTypes,
+      );
+    }
+
+    // When users search for equipment (e.g., "wheelchair store"), Google Search often
+    // returns better options because it implicitly expands synonyms.
+    // We emulate that by issuing a few related searches and merging the results.
+    final qLower = q.toLowerCase();
+    final shouldExpandWheelchair = qLower.contains('wheelchair') || qLower.contains('mobility scooter');
+    if (!shouldExpandWheelchair) {
+      return _fetchNearbyFromGooglePlaces(
+        userLat: userLat,
+        userLng: userLng,
+        query: query,
+        typeFilter: typeFilter,
+        maxDistanceMiles: maxDistanceMiles,
+        openNow: openNow,
+        minRating: minRating,
+        minUserRatings: minUserRatings,
+        priceLevels: priceLevels,
+        sortByRating: sortByRating,
+        language: language,
+        region: region,
+        rankBy: rankBy,
+        includeGoogleTypes: includeGoogleTypes,
+      );
+    }
+
+    final expandedQueries = <String>{
+      q,
+      'wheelchair store',
+      'mobility equipment store',
+      'durable medical equipment supplier',
+      'DME supplier',
+      'wheelchair repair',
+    }.toList(growable: false);
+
+    final all = <Resource>[];
+    for (final eq in expandedQueries) {
+      final chunk = await _fetchNearbyFromGooglePlaces(
+        userLat: userLat,
+        userLng: userLng,
+        query: eq,
+        typeFilter: typeFilter,
+        maxDistanceMiles: maxDistanceMiles,
+        openNow: openNow,
+        minRating: minRating,
+        minUserRatings: minUserRatings,
+        priceLevels: priceLevels,
+        sortByRating: sortByRating,
+        language: language,
+        region: region,
+        rankBy: rankBy,
+        includeGoogleTypes: includeGoogleTypes,
+      );
+      all.addAll(chunk);
+      // If we already have a healthy amount, stop early to keep it snappy.
+      if (all.length >= 40) break;
+    }
+
+    // De-dupe and keep the best-looking first (rating desc, then reviewCount desc, then distance asc)
+    final map = <String, Resource>{};
+    for (final r in all) {
+      final key = '${r.name.toLowerCase().trim()}|${(r.address ?? r.location).toLowerCase().trim()}';
+      final existing = map[key];
+      if (existing == null) {
+        map[key] = r;
+      } else {
+        final existingScore = (existing.rating ?? 0) * 10 + (existing.reviewCount ?? 0) / 1000.0;
+        final nextScore = (r.rating ?? 0) * 10 + (r.reviewCount ?? 0) / 1000.0;
+        if (nextScore > existingScore) map[key] = r;
+      }
+    }
+
+    final out = map.values.toList(growable: false);
+    out.sort((a, b) {
+      final ar = (a.rating ?? 0).compareTo(b.rating ?? 0);
+      if (ar != 0) return -ar;
+      final rc = (a.reviewCount ?? 0).compareTo(b.reviewCount ?? 0);
+      if (rc != 0) return -rc;
+      final ad = (a.distance ?? 999999).compareTo(b.distance ?? 999999);
+      return ad;
+    });
+    return out.take(30).toList(growable: false);
+  }
+
   Future<List<Resource>> _fetchNearbyFromGooglePlaces({
     required double userLat,
     required double userLng,
@@ -455,207 +555,24 @@ class ResourceService {
     String? rankBy,
     List<String>? includeGoogleTypes,
   }) async {
-    if (_isWeb) {
-      return _fetchGooglePlacesViaEdge(
-        userLat: userLat,
-        userLng: userLng,
-        query: query,
-        typeFilter: typeFilter,
-        maxDistance: maxDistanceMiles,
-        openNow: openNow,
-        minRating: minRating,
-        minUserRatings: minUserRatings,
-        includeGoogleTypes: includeGoogleTypes,
-        sortByRating: sortByRating,
-        language: language,
-        region: region,
-        mode: (query != null && query.trim().isNotEmpty) ? 'textsearch' : 'nearby',
-      );
-    }
-
-    // If a query is present, prefer Text Search to better reflect geospecific intent.
-    if (query != null && query.trim().isNotEmpty) {
-      return _fetchFromGooglePlacesTextSearch(
-        userLat: userLat,
-        userLng: userLng,
-        query: query,
-        typeFilter: typeFilter,
-        maxDistanceMiles: maxDistanceMiles,
-        openNow: openNow,
-        minRating: minRating,
-        minUserRatings: minUserRatings,
-        priceLevels: priceLevels,
-        sortByRating: sortByRating,
-        language: language,
-        region: region,
-        includeGoogleTypes: includeGoogleTypes,
-      );
-    }
-
-    // Determine radius (meters). Google Nearby Search max radius is 50,000 meters.
-    // Default to 5 miles when a specific maxDistance is not provided.
-    final miles = (maxDistanceMiles == null || maxDistanceMiles <= 0)
-        ? 5.0
-        : maxDistanceMiles.clamp(1, 50);
-    final radiusMeters = (miles * 1609.344).toInt().clamp(1, 50000);
-
-    // Map our UI type filter to Google place types (list to broaden coverage)
-    List<String> googleTypes;
-    if (includeGoogleTypes != null && includeGoogleTypes.isNotEmpty) {
-      googleTypes = includeGoogleTypes;
-    } else {
-      switch (typeFilter) {
-        case 'therapist':
-          googleTypes = ['doctor', 'physiotherapist', 'psychologist'];
-          break;
-        case 'center':
-          googleTypes = ['hospital', 'clinic'];
-          break;
-        case 'hospital':
-          googleTypes = ['hospital'];
-          break;
-        case 'pharmacy':
-          googleTypes = ['pharmacy'];
-          break;
-        case 'service':
-          googleTypes = ['pharmacy'];
-          break;
-        default:
-          googleTypes = ['hospital', 'clinic', 'doctor', 'physiotherapist', 'psychologist', 'pharmacy'];
-      }
-    }
-
-    final Map<String, Resource> byPlaceId = {};
-    final now = DateTime.now();
-
-    Future<void> fetchForType(String gType) async {
-      try {
-        final params = <String, String>{
-          'key': _googlePlacesKey,
-          'location': '$userLat,$userLng',
-          'type': gType,
-        };
-        final useDistanceRank = (rankBy == 'distance');
-        if (useDistanceRank) {
-          params['rankby'] = 'distance';
-        } else {
-          params['radius'] = radiusMeters.toString();
-        }
-        if (query != null && query.trim().isNotEmpty) params['keyword'] = query.trim();
-        if (openNow == true) params['opennow'] = 'true';
-        if (priceLevels != null && priceLevels.isNotEmpty) {
-          final minP = priceLevels.reduce((a, b) => a < b ? a : b);
-          final maxP = priceLevels.reduce((a, b) => a > b ? a : b);
-          params['minprice'] = minP.clamp(0, 4).toString();
-          params['maxprice'] = maxP.clamp(0, 4).toString();
-        }
-        if (language != null && language.isNotEmpty) params['language'] = language;
-        final uri = Uri.https('maps.googleapis.com', '/maps/api/place/nearbysearch/json', params);
-
-        debugPrint('ResourceService: Nearby type=$gType, radius=$miles mi, q="$query"');
-
-        final resp = await _client.get(uri).timeout(const Duration(seconds: 15));
-        if (resp.statusCode != 200) {
-          debugPrint('ResourceService: Nearby status ${resp.statusCode}: ${resp.body}');
-          return;
-        }
-        final decoded = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-        final status = decoded['status'] as String?;
-        if (status != 'OK' && status != 'ZERO_RESULTS') {
-          debugPrint('ResourceService: Nearby returned status=$status message=${decoded['error_message']}');
-          return;
-        }
-        final results = (decoded['results'] as List<dynamic>? ?? []);
-        for (final r in results) {
-          final m = r as Map<String, dynamic>;
-          final placeId = (m['place_id'] ?? '').toString();
-          if (placeId.isEmpty) continue;
-
-          final geometry = m['geometry'] as Map<String, dynamic>?;
-          final loc = geometry != null ? geometry['location'] as Map<String, dynamic>? : null;
-          final lat = (loc?['lat'] is num) ? (loc!['lat'] as num).toDouble() : null;
-          final lng = (loc?['lng'] is num) ? (loc!['lng'] as num).toDouble() : null;
-          if (lat == null || lng == null) continue;
-
-          final name = (m['name'] ?? '').toString().trim();
-          if (name.isEmpty) continue;
-
-          final vicinity = (m['vicinity'] ?? '').toString();
-          final address = vicinity.isNotEmpty ? vicinity : (m['plus_code']?['compound_code']?.toString() ?? '');
-
-          final types = (m['types'] as List<dynamic>? ?? []).map((e) => e.toString().toLowerCase()).toList();
-          String mappedType = 'service';
-          if (types.contains('hospital')) mappedType = 'hospital';
-          else if (types.contains('clinic')) mappedType = 'center';
-          else if (types.contains('doctor') || types.contains('physiotherapist') || types.contains('psychologist') || types.contains('dentist')) mappedType = 'therapist';
-          else if (types.contains('pharmacy')) mappedType = 'pharmacy';
-          else if (types.contains('health')) mappedType = 'service';
-
-          final openNowVal = (m['opening_hours'] is Map && (m['opening_hours']['open_now'] is bool)) ? (m['opening_hours']['open_now'] as bool) : false;
-          final availability = (m['opening_hours'] is Map) ? (openNowVal ? 'Open now' : 'Closed now') : 'Hours not available';
-          final rating = (m['rating'] is num) ? (m['rating'] as num).toDouble() : 0.0;
-          final reviews = (m['user_ratings_total'] is num) ? (m['user_ratings_total'] as num).toInt() : 0;
-          final distance = _distanceMiles(userLat, userLng, lat, lng);
-
-          final specialties = _inferSpecialtiesFromText(name);
-          final res = Resource(
-            id: 'gpl_$placeId',
-            name: name,
-            type: mappedType,
-            specialty: specialties,
-            location: vicinity.isNotEmpty ? vicinity : 'Nearby',
-            address: address,
-            distance: distance,
-            lat: lat,
-            lng: lng,
-            contactPhone: null,
-            contactEmail: null,
-            website: null,
-            availability: availability,
-            rating: rating,
-            reviewCount: reviews,
-            createdAt: now,
-            updatedAt: now,
-          );
-
-          final existing = byPlaceId[placeId];
-          if (existing == null || res.distance < existing.distance) {
-            byPlaceId[placeId] = res;
-          }
-        }
-      } catch (e, st) {
-        debugPrint('ResourceService: Nearby type=$gType failed: $e\n$st');
-      }
-    }
-
-    await Future.wait(googleTypes.map(fetchForType));
-
-    var out = byPlaceId.values.toList();
-    if (minRating != null) {
-      out = out.where((r) => r.rating >= minRating).toList();
-    }
-    if (minUserRatings != null) {
-      out = out.where((r) => r.reviewCount >= minUserRatings).toList();
-    }
-    // Filter by max distance; enforce default 5 miles when not provided
-    final effectiveMaxMiles = (maxDistanceMiles == null || maxDistanceMiles <= 0) ? 5.0 : maxDistanceMiles;
-    out = out.where((r) => r.distance <= effectiveMaxMiles).toList();
-    // If explicit Google types were provided, we already narrowed results; skip post-filtering by our coarse type.
-    if (includeGoogleTypes == null || includeGoogleTypes.isEmpty) {
-      // Enforce coarse UI type when not using explicit Google types
-      if (typeFilter != null && typeFilter != 'all') {
-        out = out.where((r) => r.type == typeFilter).toList();
-      }
-    }
-    if (sortByRating) {
-      out.sort((a, b) {
-        final byRating = b.rating.compareTo(a.rating);
-        return byRating != 0 ? byRating : a.distance.compareTo(b.distance);
-      });
-    } else {
-      out.sort((a, b) => a.distance.compareTo(b.distance));
-    }
-    return out;
+    // Always proxy Google Places through the Supabase Edge Function so we never
+    // ship API keys in the client.
+    return _fetchGooglePlacesViaEdge(
+      userLat: userLat,
+      userLng: userLng,
+      query: query,
+      typeFilter: typeFilter,
+      maxDistance: maxDistanceMiles,
+      openNow: openNow,
+      minRating: minRating,
+      minUserRatings: minUserRatings,
+      includeGoogleTypes: includeGoogleTypes,
+      sortByRating: sortByRating,
+      language: language,
+      region: region,
+      rankBy: rankBy,
+      mode: (query != null && query.trim().isNotEmpty) ? 'textsearch' : 'nearby',
+    );
   }
 
   // --- Google Places Text Search with pagination and location bias ---
@@ -675,214 +592,29 @@ class ResourceService {
     String? region,
     List<String>? includeGoogleTypes,
   }) async {
-    if (_isWeb) {
-      return _fetchGooglePlacesViaEdge(
-        userLat: userLat,
-        userLng: userLng,
-        query: query,
-        typeFilter: typeFilter,
-        maxDistance: maxDistanceMiles,
-        openNow: openNow,
-        minRating: minRating,
-        minUserRatings: minUserRatings,
-        includeGoogleTypes: includeGoogleTypes,
-        sortByRating: sortByRating,
-        language: language,
-        region: region,
-        mode: 'textsearch',
-      );
-    }
-
-    // Determine radius (meters) and clamp to 50km as per API limits
-    // Default to 5 miles when a specific maxDistance is not provided.
-    final miles = (maxDistanceMiles == null || maxDistanceMiles <= 0)
-        ? 5.0
-        : maxDistanceMiles.clamp(1, 50);
-    final radiusMeters = (miles * 1609.344).toInt().clamp(1, 50000);
-
-    // Map UI filter to Google types
-    List<String> googleTypes;
-    if (includeGoogleTypes != null && includeGoogleTypes.isNotEmpty) {
-      googleTypes = includeGoogleTypes;
-    } else {
-      switch (typeFilter) {
-        case 'therapist':
-          googleTypes = ['doctor', 'physiotherapist', 'psychologist'];
-          break;
-        case 'center':
-          googleTypes = ['hospital', 'clinic'];
-          break;
-        case 'hospital':
-          googleTypes = ['hospital'];
-          break;
-        case 'pharmacy':
-          googleTypes = ['pharmacy'];
-          break;
-        case 'service':
-          googleTypes = ['pharmacy'];
-          break;
-        default:
-          googleTypes = ['hospital', 'clinic', 'doctor', 'physiotherapist', 'psychologist', 'pharmacy'];
-      }
-    }
-
-    final Map<String, Resource> byPlaceId = {};
-    final now = DateTime.now();
-
-    Future<void> fetchOne({String? type}) async {
-      String? pageToken;
-      int page = 0;
-      do {
-        final params = <String, String>{
-          'key': _googlePlacesKey,
-          'query': query.trim(),
-          'location': '$userLat,$userLng',
-          'radius': radiusMeters.toString(),
-          if (type != null) 'type': type,
-        };
-        if (openNow == true) params['opennow'] = 'true';
-        if (priceLevels != null && priceLevels.isNotEmpty) {
-          final minP = priceLevels.reduce((a, b) => a < b ? a : b);
-          final maxP = priceLevels.reduce((a, b) => a > b ? a : b);
-          params['minprice'] = minP.clamp(0, 4).toString();
-          params['maxprice'] = maxP.clamp(0, 4).toString();
-        }
-        if (language != null && language.isNotEmpty) params['language'] = language;
-        if (region != null && region.isNotEmpty) params['region'] = region;
-        if (pageToken != null) params['pagetoken'] = pageToken;
-        final uri = Uri.https('maps.googleapis.com', '/maps/api/place/textsearch/json', params);
-        debugPrint('ResourceService: Places TextSearch type=${type ?? 'any'}, radius=$miles mi, q="$query", page=$page');
-        final resp = await _client.get(uri).timeout(const Duration(seconds: 15));
-        if (resp.statusCode != 200) {
-          debugPrint('ResourceService: TextSearch status ${resp.statusCode}: ${resp.body}');
-          break;
-        }
-        final decoded = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-        final status = decoded['status'] as String?;
-        if (status != 'OK' && status != 'ZERO_RESULTS' && status != 'INVALID_REQUEST') {
-          debugPrint('ResourceService: TextSearch returned status=$status message=${decoded['error_message']}');
-          break;
-        }
-        final results = (decoded['results'] as List<dynamic>? ?? []);
-        for (final r in results) {
-          final m = r as Map<String, dynamic>;
-          final placeId = (m['place_id'] ?? '').toString();
-          if (placeId.isEmpty) continue;
-
-          final geometry = m['geometry'] as Map<String, dynamic>?;
-          final loc = geometry != null ? geometry['location'] as Map<String, dynamic>? : null;
-          final lat = (loc?['lat'] is num) ? (loc!['lat'] as num).toDouble() : null;
-          final lng = (loc?['lng'] is num) ? (loc!['lng'] as num).toDouble() : null;
-          if (lat == null || lng == null) continue;
-
-          final name = (m['name'] ?? '').toString().trim();
-          if (name.isEmpty) continue;
-
-          final address = (m['formatted_address'] ?? m['vicinity'] ?? '').toString();
-
-          final types = (m['types'] as List<dynamic>? ?? []).map((e) => e.toString().toLowerCase()).toList();
-          String mappedType = 'service';
-          if (types.contains('hospital')) {
-            mappedType = 'hospital';
-          } else if (types.contains('clinic')) {
-            mappedType = 'center';
-          } else if (types.contains('doctor') || types.contains('physiotherapist') || types.contains('psychologist') || types.contains('dentist')) {
-            mappedType = 'therapist';
-          } else if (types.contains('pharmacy')) {
-            mappedType = 'pharmacy';
-          } else if (types.contains('health')) {
-            mappedType = 'service';
-          }
-
-          final openNow = (m['opening_hours'] is Map && (m['opening_hours']['open_now'] is bool))
-              ? (m['opening_hours']['open_now'] as bool)
-              : false;
-          final availability = (m['opening_hours'] is Map)
-              ? (openNow ? 'Open now' : 'Closed now')
-              : 'Hours not available';
-
-          final rating = (m['rating'] is num) ? (m['rating'] as num).toDouble() : 0.0;
-          final reviews = (m['user_ratings_total'] is num) ? (m['user_ratings_total'] as num).toInt() : 0;
-
-          final distance = _distanceMiles(userLat, userLng, lat, lng);
-
-          final specialties = _inferSpecialtiesFromText(name);
-          final res = Resource(
-            id: 'gpl_$placeId',
-            name: name,
-            type: mappedType,
-            specialty: specialties,
-            location: address.isNotEmpty ? address : 'Nearby',
-            address: address,
-            distance: distance,
-            lat: lat,
-            lng: lng,
-            contactPhone: null,
-            contactEmail: null,
-            website: null,
-            availability: availability,
-            rating: rating,
-            reviewCount: reviews,
-            createdAt: now,
-            updatedAt: now,
-          );
-          final existing = byPlaceId[placeId];
-          if (existing == null || res.distance < existing.distance) {
-            byPlaceId[placeId] = res;
-          }
-        }
-
-        final token = decoded['next_page_token']?.toString();
-        if (token != null && token.isNotEmpty && page + 1 < pageLimit) {
-          pageToken = token;
-          page += 1;
-          // As per Google docs, wait a short delay before requesting next page
-          await Future<void>.delayed(const Duration(seconds: 2));
-        } else {
-          pageToken = null;
-        }
-      } while (pageToken != null);
-    }
-
-    if (typeFilter != null && typeFilter != 'all') {
-      await Future.wait(googleTypes.map((t) => fetchOne(type: t)));
-    } else {
-      // Broad search without a specific type to capture more matches
-      await fetchOne(type: null);
-    }
-
-    var out = byPlaceId.values.toList();
-    if (minRating != null) {
-      out = out.where((r) => r.rating >= minRating).toList();
-    }
-    if (minUserRatings != null) {
-      out = out.where((r) => r.reviewCount >= minUserRatings).toList();
-    }
-    // Filter by max distance; enforce default 5 miles when not provided
-    final effectiveMaxMiles = (maxDistanceMiles == null || maxDistanceMiles <= 0) ? 5.0 : maxDistanceMiles;
-    out = out.where((r) => r.distance <= effectiveMaxMiles).toList();
-    if (includeGoogleTypes == null || includeGoogleTypes.isEmpty) {
-      if (typeFilter != null && typeFilter != 'all') {
-        out = out.where((r) => r.type == typeFilter).toList();
-      }
-    }
-    if (sortByRating) {
-      out.sort((a, b) {
-        final byRating = b.rating.compareTo(a.rating);
-        return byRating != 0 ? byRating : a.distance.compareTo(b.distance);
-      });
-    } else {
-      out.sort((a, b) => a.distance.compareTo(b.distance));
-    }
-
-    // Enrich a smaller top slice with phone/website via Place Details
-    await _enrichTopWithPlaceDetails(out, top: 4);
-    return out;
+    // Deprecated path: always proxy to Edge Function.
+    return _fetchGooglePlacesViaEdge(
+      userLat: userLat,
+      userLng: userLng,
+      query: query,
+      typeFilter: typeFilter,
+      maxDistance: maxDistanceMiles,
+      openNow: openNow,
+      minRating: minRating,
+      minUserRatings: minUserRatings,
+      includeGoogleTypes: includeGoogleTypes,
+      sortByRating: sortByRating,
+      language: language,
+      region: region,
+      rankBy: null,
+      mode: 'textsearch',
+    );
   }
 
   Future<List<Resource>> _fetchGooglePlacesViaEdge({
-    required double userLat,
-    required double userLng,
+    required double? userLat,
+    required double? userLng,
+    String? preferredLocationText,
     String? query,
     String? typeFilter,
     double? maxDistance,
@@ -893,13 +625,19 @@ class ResourceService {
     bool sortByRating = false,
     String? language,
     String? region,
+    String? rankBy,
     String? mode,
   }) async {
     try {
       final body = <String, dynamic>{
-        'userLat': userLat,
-        'userLng': userLng,
       };
+      if (userLat != null && userLng != null) {
+        body['userLat'] = userLat;
+        body['userLng'] = userLng;
+      }
+      if (preferredLocationText != null && preferredLocationText.trim().isNotEmpty) {
+        body['preferredLocationText'] = preferredLocationText.trim();
+      }
       if (query != null && query.trim().isNotEmpty) body['query'] = query.trim();
       if (typeFilter != null && typeFilter.isNotEmpty) body['type'] = typeFilter;
       if (maxDistance != null && maxDistance > 0) body['maxDistanceMiles'] = maxDistance;
@@ -911,6 +649,14 @@ class ResourceService {
       if (includeGoogleTypes != null && includeGoogleTypes.isNotEmpty) body['includeGoogleTypes'] = includeGoogleTypes;
       if (sortByRating) body['sortByRating'] = true;
       if (mode != null && mode.isNotEmpty) body['mode'] = mode;
+
+      // For most use-cases, relevance is better than distance sorting.
+      // We only prefer distance-first when the caller explicitly asks for it.
+      if (rankBy != null && rankBy.trim().toLowerCase() == 'distance') {
+        body['rankPreference'] = 'distance';
+      } else {
+        body['rankPreference'] = 'relevance';
+      }
 
       final response = await _supabase.functions.invoke('places_search', body: body);
       if (response.status != 200) {
@@ -941,6 +687,16 @@ class ResourceService {
         final rating = (m['rating'] is num) ? (m['rating'] as num).toDouble() : 0.0;
         final reviewCount = (m['reviewCount'] is num) ? (m['reviewCount'] as num).toInt() : 0;
         final distance = (m['distanceMiles'] is num) ? (m['distanceMiles'] as num).toDouble() : 0.0;
+
+        final placeTypes = (m['placeTypes'] is List)
+            ? List<String>.from((m['placeTypes'] as List).map((e) => e.toString()))
+            : const <String>[];
+        final reviews = (m['reviews'] is List)
+            ? List<Map<String, dynamic>>.from(
+                (m['reviews'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
+              )
+            : const <Map<String, dynamic>>[];
+
         return Resource(
           id: (m['id'] ?? '').toString(),
           name: name,
@@ -954,9 +710,17 @@ class ResourceService {
           contactPhone: (m['contactPhone']?.toString().isNotEmpty == true) ? m['contactPhone'].toString() : null,
           contactEmail: null,
           website: (m['website']?.toString().isNotEmpty == true) ? m['website'].toString() : null,
-          availability: (m['availability'] ?? 'Hours not available').toString(),
+          availability: (m['availability'] ?? (m['hours'] ?? 'Hours not available')).toString(),
           rating: rating,
           reviewCount: reviewCount,
+          googleMapsUrl: (m['googleMapsUrl']?.toString().isNotEmpty == true) ? m['googleMapsUrl'].toString() : null,
+          priceLevel: (m['priceLevel'] is num) ? (m['priceLevel'] as num).toInt() : null,
+          placeTypes: placeTypes,
+          hours: (m['hours']?.toString().isNotEmpty == true) ? m['hours'].toString() : null,
+          accessibilityOptions: (m['accessibilityOptions'] is Map)
+              ? Map<String, dynamic>.from(m['accessibilityOptions'] as Map)
+              : null,
+          reviews: reviews,
           createdAt: now,
           updatedAt: now,
         );
@@ -967,66 +731,71 @@ class ResourceService {
     }
   }
 
-  Future<void> _enrichTopWithPlaceDetails(List<Resource> items, {int top = 6}) async {
-    final slice = items.take(top).toList();
-    Future<void> enrich(Resource r) async {
-      final placeId = r.id.startsWith('gpl_') ? r.id.substring(4) : null;
-      if (placeId == null || placeId.isEmpty) return;
-      final cached = _detailsCache.get(placeId);
-      if (cached != null) {
-        final idx = items.indexOf(r);
-        if (idx != -1) {
-          items[idx] = r.copyWith(
-            contactPhone: cached['phone']?.isNotEmpty == true ? cached['phone'] : r.contactPhone,
-            website: cached['website']?.isNotEmpty == true ? cached['website'] : r.website,
-            availability: cached['availability'] ?? r.availability,
-          );
-        }
-        return;
-      }
-      try {
-        final params = <String, String>{
-          'key': _googlePlacesKey,
-          'place_id': placeId,
-          'fields': 'formatted_phone_number,website,opening_hours',
-        };
-        final uri = Uri.https('maps.googleapis.com', '/maps/api/place/details/json', params);
-        final resp = await _client.get(uri).timeout(const Duration(seconds: 12));
-        if (resp.statusCode != 200) return;
-        final decoded = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-        final status = decoded['status']?.toString();
-        if (status != 'OK') return;
-        final result = decoded['result'] as Map<String, dynamic>?;
-        if (result == null) return;
-        final phone = (result['formatted_phone_number'] ?? '').toString();
-        final website = (result['website'] ?? '').toString();
-        String availability = r.availability;
-        try {
-          final oh = result['opening_hours'] as Map<String, dynamic>?;
-          if (oh != null && (oh['open_now'] is bool)) {
-            final on = (oh['open_now'] as bool);
-            availability = on ? 'Open now' : 'Closed now';
-          }
-        } catch (_) {}
-        _detailsCache.set(placeId, {
-          'phone': phone,
-          'website': website,
-          'availability': availability,
-        });
-        final idx = items.indexOf(r);
-        if (idx != -1) {
-          items[idx] = r.copyWith(
-            contactPhone: phone.isNotEmpty ? phone : r.contactPhone,
-            website: website.isNotEmpty ? website : r.website,
-            availability: availability,
-          );
-        }
-      } catch (e) {
-        debugPrint('ResourceService: place details failed for ${r.id}: $e');
-      }
+  List<Resource> _postFilterGooglePlacesResults(
+    List<Resource> input, {
+    required String? query,
+    required int? userAge,
+  }) {
+    if (input.isEmpty) return input;
+
+    final q = (query ?? '').toLowerCase();
+    final wantsAdult = (userAge == null) ? _queryLooksAdult(q) : userAge >= 18;
+
+    final filtered = <Resource>[];
+    for (final r in input) {
+      if (wantsAdult && _looksPediatric(r)) continue;
+      filtered.add(r);
     }
-    await Future.wait(slice.map(enrich));
+
+    // Keep results diverse (avoid returning the same chain/location multiple times)
+    final seen = <String>{};
+    final deduped = <Resource>[];
+    for (final r in filtered) {
+      final key = '${r.name.toLowerCase().trim()}|${(r.address ?? r.location).toLowerCase().trim()}';
+      if (seen.add(key)) deduped.add(r);
+    }
+    return deduped;
   }
+
+  bool _queryLooksAdult(String q) {
+    if (q.contains('wheelchair')) return true;
+    if (q.contains('spinal cord')) return true;
+    if (q.contains('dme') || q.contains('durable medical equipment')) return true;
+    if (q.contains('mobility') && (q.contains('store') || q.contains('equipment') || q.contains('supplier'))) return true;
+    return false;
+  }
+
+  bool _looksPediatric(Resource r) {
+    final name = r.name.toLowerCase();
+    final address = (r.address ?? r.location).toLowerCase();
+    final types = r.placeTypes.map((t) => t.toLowerCase());
+
+    const kidTerms = <String>[
+      'pediatric',
+      'pediatrics',
+      'kids',
+      'children',
+      'child',
+      'youth',
+      'teen',
+      'school',
+      'toy',
+      'superhero',
+      'superheroes',
+      'tiny',
+    ];
+
+    bool containsAny(String s) => kidTerms.any((t) => s.contains(t));
+    if (containsAny(name) || containsAny(address)) return true;
+
+    // Types are usually broad; this is just a light hint.
+    if (types.any((t) => t.contains('primary_school') || t.contains('school'))) return true;
+    return false;
+  }
+
+  // NOTE: Google Place Details enrichment used to happen client-side here, but that
+  // required shipping an API key in the app. We now return enriched fields directly
+  // from the `places_search` Supabase Edge Function.
 
   // --- Live data via OpenStreetMap Overpass API ---
   Future<List<Resource>> _fetchNearbyFromOverpass({
@@ -1709,14 +1478,23 @@ extension on ResourceService {
         id: 'cur_${m['id']}',
         name: (m['name'] ?? '').toString(),
         type: (m['type'] ?? 'service').toString(),
-        specialty: ((m['specialties'] as List<dynamic>? ?? []).map((e) => e.toString()).toList()),
+        // Back-compat: some schemas used `specialty` (singular) while newer code
+        // writes `specialties` (plural). Prefer plural, fall back to singular.
+        specialty: ((m['specialties'] as List<dynamic>? ?? m['specialty'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toList()),
         location: (m['city'] ?? m['state'] ?? m['country'] ?? 'Nearby').toString(),
         address: (m['address'] ?? '').toString(),
         distance: dist,
         lat: lat,
         lng: lng,
-        contactPhone: (m['phone']?.toString().isNotEmpty == true) ? m['phone'].toString() : null,
-        contactEmail: (m['contact_email']?.toString().isNotEmpty == true) ? m['contact_email'].toString() : null,
+        // Back-compat with older `contact_phone` naming.
+        contactPhone: (m['phone']?.toString().isNotEmpty == true)
+            ? m['phone'].toString()
+            : ((m['contact_phone']?.toString().isNotEmpty == true) ? m['contact_phone'].toString() : null),
+        contactEmail: (m['contact_email']?.toString().isNotEmpty == true)
+            ? m['contact_email'].toString()
+            : ((m['contactEmail']?.toString().isNotEmpty == true) ? m['contactEmail'].toString() : null),
         website: (m['website']?.toString().isNotEmpty == true) ? m['website'].toString() : null,
         availability: (m['availability'] ?? 'Hours not available').toString(),
         rating: 0,

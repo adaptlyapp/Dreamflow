@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:wellspring/models/education_resource.dart';
 import 'package:wellspring/services/education_service.dart';
-import 'package:wellspring/services/family_service.dart';
 import 'package:wellspring/services/condition_service.dart';
 import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/openai/openai_config.dart';
+import 'package:wellspring/services/arie_action_plan_service.dart';
+import 'package:wellspring/services/arie_support_engine.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// A floating bubble widget that expands to let users ask questions about
@@ -38,6 +39,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
   String? _answer;
   List<String> _answerSteps = [];
   List<String> _products = [];
+  List<ArieResourceRecommendation> _resourceRecs = const [];
   String? _whenToContact;
   String? _encouragement;
   List<EducationResource> _relatedResources = [];
@@ -78,6 +80,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
       _answer = null;
       _answerSteps = [];
       _products = [];
+      _resourceRecs = const [];
       _whenToContact = null;
       _encouragement = null;
       _relatedResources = [];
@@ -101,6 +104,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
               _answer = null;
               _answerSteps = [];
               _products = [];
+              _resourceRecs = const [];
               _whenToContact = null;
               _encouragement = null;
               _relatedResources = [];
@@ -123,6 +127,7 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
           _answer = null;
           _answerSteps = [];
           _products = [];
+          _resourceRecs = const [];
           _whenToContact = null;
           _encouragement = null;
           _relatedResources = [];
@@ -134,12 +139,16 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
 
   Future<void> _handleQuestion() async {
     if (_questionController.text.trim().isEmpty) return;
+    // Prevent double-submits (send button + keyboard action) from firing two
+    // large AI calls at once, which burns the per-minute token budget.
+    if (_isSearching) return;
 
     setState(() {
       _isSearching = true;
       _answer = null;
       _answerSteps = [];
       _products = [];
+      _resourceRecs = const [];
       _whenToContact = null;
       _encouragement = null;
       _relatedResources = [];
@@ -149,40 +158,17 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
       final question = _questionController.text.trim();
       final educationService = EducationService.instance;
 
-      // Get patient conditions for better context
-      List<String> patientConditions = [];
-      String? conditionDetailsSummary;
-      
-      if (widget.isFamily && widget.patientId != null) {
-        try {
-          final patientData =
-              await FamilyService().getJourneyData(widget.patientId!);
-          final conditions = patientData['conditions'] as Map<String, String>?;
-          if (conditions != null) {
-            patientConditions = conditions.values.toList();
-          }
-          // Get detailed condition information if available
-          final conditionDetails = patientData['conditionDetails'];
-          if (conditionDetails != null) {
-            conditionDetailsSummary = conditionDetails.toString();
-          }
-        } catch (e) {
-          debugPrint(
-              '[CareQuestionBubble] Error loading patient conditions: $e');
-        }
-      }
-
-      // Use ChatGPT to generate personalized answer
-      final openAiClient = OpenAIClient();
-      final aiResponse = await openAiClient.generateCareAnswer(
+      // Use ARIE contextual engine (patient context + longitudinal data + optional location)
+      final engine = ArieSupportEngine();
+      final ArieSupportResponse aiResponse = await engine.answer(
         question: question,
-        patientConditions: patientConditions,
-        conditionDetailsSummary: conditionDetailsSummary,
+        requesterUserId: widget.userId,
+        patientId: widget.isFamily ? widget.patientId : null,
       );
 
       // Find related educational resources
       final keywords = question.split(' ').where((w) => w.length > 3).toList();
-      final searchHints = [...keywords, ...patientConditions];
+      final searchHints = [...keywords];
       final resources = educationService.recommendedFor(
         searchHints,
         limit: 3,
@@ -190,11 +176,14 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
 
       if (mounted) {
         setState(() {
-          _answer = aiResponse['answer'] as String?;
-          _answerSteps = List<String>.from(aiResponse['steps'] as List? ?? []);
-          _products = List<String>.from(aiResponse['products'] as List? ?? []);
-          _whenToContact = aiResponse['whenToContact'] as String?;
-          _encouragement = aiResponse['encouragement'] as String?;
+          _answer = aiResponse.answer;
+          _answerSteps = aiResponse.steps;
+          _resourceRecs = aiResponse.recommendations;
+          // Back-compat: keep products slot for AI to suggest equipment, but this new
+          // engine focuses on resources; product suggestions may be added later.
+          _products = const [];
+          _whenToContact = (aiResponse.safetyNotes.isEmpty) ? null : aiResponse.safetyNotes.first;
+          _encouragement = null;
           _relatedResources = resources;
           _isSearching = false;
         });
@@ -202,11 +191,16 @@ class _CareQuestionBubbleState extends State<CareQuestionBubble>
     } catch (e) {
       debugPrint('[CareQuestionBubble] Error: $e');
       if (mounted) {
+        final transient = OpenAIClient.isTransientAiError(e);
         setState(() {
-          _answer = 'I\'m having trouble generating a response right now. '
-              'Please try again in a moment, or contact your care team with specific questions.';
+          _answer = transient
+              ? 'I\'m getting a lot of requests at once and hit a temporary limit. '
+                  'Wait about 15 seconds and tap send again — your question is still in the box.'
+              : 'I\'m having trouble generating a response right now. '
+                  'Please try again in a moment, or contact your care team with specific questions.';
           _answerSteps = [];
           _products = [];
+          _resourceRecs = const [];
           _whenToContact = null;
           _encouragement = null;
           _isSearching = false;
@@ -359,6 +353,17 @@ class _AskArieModal extends StatefulWidget {
 }
 
 class _AskArieModalState extends State<_AskArieModal> {
+  String _prettyDetailKey(String raw) {
+    if (raw.trim().isEmpty) return raw;
+    // Convert camelCase-ish / snake-ish keys to a human label.
+    final spaced = raw
+        .replaceAll('_', ' ')
+        .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}')
+        .trim();
+    if (spaced.isEmpty) return raw;
+    return spaced.substring(0, 1).toUpperCase() + spaced.substring(1);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -468,6 +473,13 @@ class _AskArieModalState extends State<_AskArieModal> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                    Builder(
+                      builder: (context) {
+                        // Location permission is prompted during onboarding (iOS system prompt).
+                        // We keep ARIE permission-aware, but we no longer prompt from inside this sheet.
+                        return const SizedBox.shrink();
+                      },
+                    ),
                     // Question input
                     TextField(
                       controller: bubble._questionController,
@@ -617,100 +629,92 @@ class _AskArieModalState extends State<_AskArieModal> {
                                  ),
                                )),
                              ],
-                             if (bubble._whenToContact != null && bubble._whenToContact!.isNotEmpty) ...[
-                               const SizedBox(height: 12),
-                               Container(
-                                 padding: const EdgeInsets.all(10),
-                                 decoration: BoxDecoration(
-                                   color: colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
-                                   borderRadius: BorderRadius.circular(8),
-                                 ),
-                                 child: Row(
-                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                   children: [
-                                     Icon(
-                                       Icons.phone,
-                                       size: 16,
-                                       color: colorScheme.onPrimaryContainer,
-                                     ),
-                                     const SizedBox(width: 8),
-                                     Expanded(
-                                       child: Text(
-                                         bubble._whenToContact!,
-                                         style: theme.textTheme.labelSmall?.copyWith(
-                                           color: colorScheme.onPrimaryContainer,
-                                           height: 1.4,
-                                         ),
-                                       ),
-                                     ),
-                                   ],
-                                 ),
-                               ),
-                             ],
-                             if (bubble._encouragement != null && bubble._encouragement!.isNotEmpty) ...[
-                               const SizedBox(height: 12),
-                               Text(
-                                 bubble._encouragement!,
-                                 style: theme.textTheme.bodySmall?.copyWith(
-                                   color: colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
-                                   fontStyle: FontStyle.italic,
-                                   height: 1.4,
-                                 ),
-                               ),
-                               // Create plan button
-                               const SizedBox(height: 16),
-                                ElevatedButton.icon(
-                                  onPressed: () async {
-                                    debugPrint('[CreatePlan] Button clicked');
-                                    final userProvider = context.read<UserProvider>();
-                                    final conditions = userProvider.currentUser?.conditions ?? [];
-                                    final questionText = bubble._questionController.text.trim();
-                                    
-                                    debugPrint('[CreatePlan] Conditions: $conditions, Question: "$questionText"');
-                                    
-                                    // Close modal first before navigating
-                                    widget.onClose();
-                                    
-                                    if (conditions.isEmpty) {
-                                      debugPrint('[CreatePlan] No conditions, navigating to /conditions');
-                                      if (bubble.mounted) {
-                                        await Future.delayed(const Duration(milliseconds: 300));
-                                        bubble.context.go('/conditions');
-                                      }
-                                      return;
-                                    }
 
-                                    try {
-                                      final conditionService = ConditionService();
-                                      final condition = await conditionService.getConditionById(conditions.first);
-                                      final conditionName = condition?.name ?? 'Plan';
-                                      
-                                      debugPrint('[CreatePlan] Got condition: $conditionName');
-                                      
-                                      if (widget.onCreatePlan != null) {
-                                        await Future.delayed(const Duration(milliseconds: 300));
-                                        debugPrint('[CreatePlan] Calling onCreatePlan with: conditionId=${ conditions.first}, conditionName=$conditionName, questionText="$questionText"');
-                                        widget.onCreatePlan!(conditions.first, conditionName, questionText);
-                                      } else {
-                                        debugPrint('[CreatePlan] No onCreatePlan callback provided');
-                                      }
-                                    } catch (e) {
-                                      debugPrint('[CreatePlan] Error: $e');
-                                    }
-                                  },
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Create a Plan'),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    backgroundColor: colorScheme.primary,
-                                    foregroundColor: colorScheme.onPrimary,
+                              if (bubble._resourceRecs.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Recommended Support Near You:',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                             ],
-                           ],
-                         ),
-                       ),
-                     ],
+                                const SizedBox(height: 8),
+                                ...bubble._resourceRecs.map((rec) {
+                                  final distance = rec.distanceMiles;
+                                  final rating = rec.rating;
+                                  final metaParts = <String>[];
+                                  if (distance != null && distance > 0) metaParts.add('${distance.toStringAsFixed(1)} mi');
+                                  if (rating != null && rating > 0) metaParts.add('⭐ ${rating.toStringAsFixed(1)}');
+                                  if (rec.reviewCount != null && rec.reviewCount! > 0) metaParts.add('${rec.reviewCount} reviews');
+                                  final meta = metaParts.join(' • ');
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: _ArieRecommendationCard(
+                                      recommendation: rec,
+                                      meta: meta,
+                                      prettyDetailKey: _prettyDetailKey,
+                                      questionText: bubble._questionController.text.trim(),
+                                      userId: bubble.widget.userId,
+                                      isFamily: bubble.widget.isFamily,
+                                      onPlanCreated: () {
+                                        widget.onClose();
+                                        // Give the sheet a moment to close before navigating.
+                                        Future.delayed(const Duration(milliseconds: 250), () {
+                                          if (bubble.mounted) bubble.context.go('/plans');
+                                        });
+                                      },
+                                    ),
+                                  );
+                                }),
+                              ],
+
+                              if (bubble._whenToContact != null && bubble._whenToContact!.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        Icons.phone,
+                                        size: 16,
+                                        color: colorScheme.onPrimaryContainer,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          bubble._whenToContact!,
+                                          style: theme.textTheme.labelSmall?.copyWith(
+                                            color: colorScheme.onPrimaryContainer,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              if (bubble._encouragement != null && bubble._encouragement!.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  bubble._encouragement!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                    fontStyle: FontStyle.italic,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
 
                     if (bubble._relatedResources.isNotEmpty) ...[
                       const SizedBox(height: 16),
@@ -852,5 +856,296 @@ class _AskArieModalState extends State<_AskArieModal> {
         ),
       ),
     );
+  }
+}
+
+class _ArieRecommendationCard extends StatelessWidget {
+  final ArieResourceRecommendation recommendation;
+  final String meta;
+  final String Function(String raw) prettyDetailKey;
+  final String questionText;
+  final String userId;
+  final bool isFamily;
+  final VoidCallback onPlanCreated;
+
+  const _ArieRecommendationCard({
+    required this.recommendation,
+    required this.meta,
+    required this.prettyDetailKey,
+    required this.questionText,
+    required this.userId,
+    required this.isFamily,
+    required this.onPlanCreated,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cs.onPrimaryContainer.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.place_outlined, size: 16, color: cs.onPrimaryContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      recommendation.name,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onPrimaryContainer,
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
+                      ),
+                    ),
+                    if (meta.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        meta,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: cs.onPrimaryContainer.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (recommendation.reason != null && recommendation.reason!.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              recommendation.reason!.trim(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: cs.onPrimaryContainer.withValues(alpha: 0.92),
+                height: 1.35,
+              ),
+            ),
+          ],
+          if (recommendation.details.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...recommendation.details.entries
+                .where((e) => (e.value ?? '').trim().isNotEmpty)
+                .take(4)
+                .map((e) {
+              final k = prettyDetailKey(e.key);
+              final v = (e.value ?? '').trim();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '$k: $v',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: cs.onPrimaryContainer.withValues(alpha: 0.88),
+                    height: 1.25,
+                  ),
+                ),
+              );
+            }),
+          ],
+          if (recommendation.questionsToAsk.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Questions to ask:',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: cs.onPrimaryContainer.withValues(alpha: 0.92),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...recommendation.questionsToAsk.take(3).map((q) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '• ${q.trim()}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onPrimaryContainer.withValues(alpha: 0.88),
+                      height: 1.25,
+                    ),
+                  ),
+                )),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _openInMaps(context, recommendation),
+                  icon: Icon(Icons.map_outlined, color: cs.onPrimaryContainer),
+                  label: Text('Open', style: TextStyle(color: cs.onPrimaryContainer)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: cs.onPrimaryContainer.withValues(alpha: 0.35)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _openCreatePlanSheet(context),
+                  icon: Icon(Icons.auto_awesome, color: cs.onPrimary),
+                  label: Text('Create plan', style: TextStyle(color: cs.onPrimary)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openInMaps(BuildContext context, ArieResourceRecommendation rec) async {
+    final loc = (rec.universalRecord['location'] ?? rec.details['locationOrServiceArea'] ?? rec.details['location'] ?? rec.details['address'])?.toString();
+    final q = [rec.name, if (loc != null && loc.trim().isNotEmpty) loc.trim()].join(' ');
+    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(q)}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open maps.')));
+      }
+    }
+  }
+
+  Future<void> _openCreatePlanSheet(BuildContext context) async {
+    final userProvider = context.read<UserProvider>();
+    final conditions = userProvider.currentUser?.conditions ?? const <String>[];
+    final conditionId = conditions.isEmpty ? null : conditions.first;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _CreateActionPlanSheet(
+        userId: userId,
+        conditionId: conditionId,
+        questionText: questionText,
+        recommendation: recommendation,
+        onPlanCreated: onPlanCreated,
+      ),
+    );
+  }
+}
+
+class _CreateActionPlanSheet extends StatefulWidget {
+  final String userId;
+  final String? conditionId;
+  final String questionText;
+  final ArieResourceRecommendation recommendation;
+  final VoidCallback onPlanCreated;
+
+  const _CreateActionPlanSheet({
+    required this.userId,
+    required this.conditionId,
+    required this.questionText,
+    required this.recommendation,
+    required this.onPlanCreated,
+  });
+
+  @override
+  State<_CreateActionPlanSheet> createState() => _CreateActionPlanSheetState();
+}
+
+class _CreateActionPlanSheetState extends State<_CreateActionPlanSheet> {
+  bool _loading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(left: 12, right: 12, bottom: 12 + bottomInset),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: cs.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Create action plan',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.close))
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Based on: ${widget.recommendation.name}',
+                style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _loading ? null : _create,
+                  icon: _loading
+                      ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: cs.onPrimary, strokeWidth: 2))
+                      : Icon(Icons.check_circle, color: cs.onPrimary),
+                  label: Text(_loading ? 'Building plan…' : 'Create & save', style: TextStyle(color: cs.onPrimary)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'We’ll add the steps to your Plans so you can track progress.',
+                style: theme.textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _create() async {
+    setState(() => _loading = true);
+    try {
+      final service = ArieActionPlanService();
+      final plan = await service.createPlanFromRecommendation(
+        userId: widget.userId,
+        conditionId: widget.conditionId,
+        question: widget.questionText,
+        recommendation: widget.recommendation,
+      );
+      await service.persistPlan(
+        userId: widget.userId,
+        conditionId: widget.conditionId,
+        recommendation: widget.recommendation,
+        plan: plan,
+      );
+      if (mounted) {
+        context.pop();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Action plan created.')));
+        widget.onPlanCreated();
+      }
+    } catch (e) {
+      debugPrint('_CreateActionPlanSheet._create error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create plan: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 }

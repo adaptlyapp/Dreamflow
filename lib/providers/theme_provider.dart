@@ -27,12 +27,16 @@ class ThemeProvider extends ChangeNotifier {
   Hospital? get hospital => _hospital;
   Organization? get organization => _organization;
 
-  ThemeData get lightTheme => _brand == null
-      ? app_theme.lightTheme
-      : _branded(app_theme.lightTheme, _brand!);
-  ThemeData get darkTheme => _brand == null
-      ? app_theme.darkTheme
-      : _branded(app_theme.darkTheme, _brand!);
+  /// Hospital/organization brand colors are intentionally IGNORED for theming.
+  /// The patient portal always uses the Adaptly brand palette (teal/green) so the
+  /// product identity stays consistent. Hospital/org data is still available via
+  /// [hospital] / [organization] for names, logos, and contact info.
+  static const bool applyBrandColorsToTheme = false;
+
+  ThemeData get lightTheme =>
+      (!applyBrandColorsToTheme || _brand == null) ? app_theme.lightTheme : _branded(app_theme.lightTheme, _brand!);
+  ThemeData get darkTheme =>
+      (!applyBrandColorsToTheme || _brand == null) ? app_theme.darkTheme : _branded(app_theme.darkTheme, _brand!);
 
   Future<void> loadFromUserPreferences() async {
     try {

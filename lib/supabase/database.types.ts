@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -1192,12 +1192,14 @@ export type Database = {
           department: string | null
           email: string
           full_name: string
+          google_calendar_ics_url: string | null
           hire_date: string | null
           id: string
           organization_id: string | null
           phone: string | null
           role: string
           status: string
+          timezone: string
           updated_at: string | null
         }
         Insert: {
@@ -1207,12 +1209,14 @@ export type Database = {
           department?: string | null
           email: string
           full_name: string
+          google_calendar_ics_url?: string | null
           hire_date?: string | null
           id?: string
           organization_id?: string | null
           phone?: string | null
           role: string
           status?: string
+          timezone?: string
           updated_at?: string | null
         }
         Update: {
@@ -1222,12 +1226,14 @@ export type Database = {
           department?: string | null
           email?: string
           full_name?: string
+          google_calendar_ics_url?: string | null
           hire_date?: string | null
           id?: string
           organization_id?: string | null
           phone?: string | null
           role?: string
           status?: string
+          timezone?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -1790,6 +1796,57 @@ export type Database = {
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hospital_api_keys: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          hospital_id: string
+          id: string
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          hospital_id: string
+          id?: string
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          hospital_id?: string
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hospital_api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hospital_api_keys_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
             referencedColumns: ["id"]
           },
         ]
@@ -2867,6 +2924,255 @@ export type Database = {
           },
         ]
       }
+      pilot_clinician_feedback: {
+        Row: {
+          clinician_id: string
+          clinician_role: string | null
+          created_at: string | null
+          id: string
+          patient_id: string | null
+          question_id: string
+          question_text: string
+          response_text: string | null
+          response_value: number | null
+        }
+        Insert: {
+          clinician_id: string
+          clinician_role?: string | null
+          created_at?: string | null
+          id?: string
+          patient_id?: string | null
+          question_id: string
+          question_text: string
+          response_text?: string | null
+          response_value?: number | null
+        }
+        Update: {
+          clinician_id?: string
+          clinician_role?: string | null
+          created_at?: string | null
+          id?: string
+          patient_id?: string | null
+          question_id?: string
+          question_text?: string
+          response_text?: string | null
+          response_value?: number | null
+        }
+        Relationships: []
+      }
+      pilot_continuation_survey: {
+        Row: {
+          created_at: string | null
+          id: string
+          perceived_value: number | null
+          reason_text: string | null
+          user_id: string | null
+          user_role: string
+          would_continue_using: boolean
+          would_recommend: boolean
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          perceived_value?: number | null
+          reason_text?: string | null
+          user_id?: string | null
+          user_role: string
+          would_continue_using: boolean
+          would_recommend: boolean
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          perceived_value?: number | null
+          reason_text?: string | null
+          user_id?: string | null
+          user_role?: string
+          would_continue_using?: boolean
+          would_recommend?: boolean
+        }
+        Relationships: []
+      }
+      pilot_family_activity_log: {
+        Row: {
+          activity_type: string
+          created_at: string | null
+          family_member_id: string
+          id: string
+          patient_id: string
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string | null
+          family_member_id: string
+          id?: string
+          patient_id: string
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string | null
+          family_member_id?: string
+          id?: string
+          patient_id?: string
+        }
+        Relationships: []
+      }
+      pilot_healthcare_utilization: {
+        Row: {
+          created_at: string | null
+          event_date: string
+          event_type: string
+          id: string
+          notes: string | null
+          preventable: boolean | null
+          reason: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          event_date: string
+          event_type: string
+          id?: string
+          notes?: string | null
+          preventable?: boolean | null
+          reason?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          event_date?: string
+          event_type?: string
+          id?: string
+          notes?: string | null
+          preventable?: boolean | null
+          reason?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pilot_nps_survey: {
+        Row: {
+          created_at: string | null
+          feedback_text: string | null
+          id: string
+          nps_score: number
+          user_id: string | null
+          user_role: string
+        }
+        Insert: {
+          created_at?: string | null
+          feedback_text?: string | null
+          id?: string
+          nps_score: number
+          user_id?: string | null
+          user_role: string
+        }
+        Update: {
+          created_at?: string | null
+          feedback_text?: string | null
+          id?: string
+          nps_score?: number
+          user_id?: string | null
+          user_role?: string
+        }
+        Relationships: []
+      }
+      pilot_survey_responses: {
+        Row: {
+          created_at: string | null
+          id: string
+          question_id: string
+          question_text: string
+          response_text: string | null
+          response_value: number | null
+          survey_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          question_id: string
+          question_text: string
+          response_text?: string | null
+          response_value?: number | null
+          survey_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          question_id?: string
+          question_text?: string
+          response_text?: string | null
+          response_value?: number | null
+          survey_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pilot_usability_errors: {
+        Row: {
+          created_at: string | null
+          error_description: string | null
+          error_type: string
+          feature_name: string
+          id: string
+          severity: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_description?: string | null
+          error_type: string
+          feature_name: string
+          id?: string
+          severity?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_description?: string | null
+          error_type?: string
+          feature_name?: string
+          id?: string
+          severity?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      pilot_workflow_time_tracking: {
+        Row: {
+          completed: boolean | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          task_name: string
+          time_spent_seconds: number
+          user_id: string | null
+          user_role: string
+        }
+        Insert: {
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          task_name: string
+          time_spent_seconds: number
+          user_id?: string | null
+          user_role: string
+        }
+        Update: {
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          task_name?: string
+          time_spent_seconds?: number
+          user_id?: string | null
+          user_role?: string
+        }
+        Relationships: []
+      }
       plan_timelines: {
         Row: {
           condition_id: string | null
@@ -3432,57 +3738,147 @@ export type Database = {
       }
       resources_curated: {
         Row: {
+          accepts_medicaid: boolean | null
+          accepts_medicare: boolean | null
           address: string
           availability: string | null
+          capabilities: string[] | null
+          city: string | null
+          conditions_served: string[] | null
           contact_email: string | null
           contact_phone: string | null
+          country: string | null
           created_at: string | null
+          description: string | null
+          does_crt_custom_wheelchairs: boolean | null
+          does_home_modifications: boolean | null
+          does_in_home_service: boolean | null
+          does_installation: boolean | null
+          does_insurance_coordination: boolean | null
+          does_rentals: boolean | null
+          does_repairs: boolean | null
+          does_sales: boolean | null
+          does_seating_positioning: boolean | null
+          does_wheelchair_evals_clinical: boolean | null
+          geo_precision: string | null
+          hours: string | null
           id: string
+          insurance_accepted: string[] | null
+          last_verified_at: string | null
           lat: number | null
           lng: number | null
-          location: string
+          location: string | null
           name: string
+          needs_verification: boolean | null
+          phone: string | null
+          populations_served: string[] | null
+          postal_code: string | null
+          provider_type: string | null
           rating: number | null
           review_count: number | null
+          service_area: string | null
+          service_kinds: string[] | null
+          services_offered: string | null
           specialty: string[] | null
+          state: string | null
           status: string | null
           type: string
           updated_at: string | null
           website: string | null
         }
         Insert: {
+          accepts_medicaid?: boolean | null
+          accepts_medicare?: boolean | null
           address: string
           availability?: string | null
+          capabilities?: string[] | null
+          city?: string | null
+          conditions_served?: string[] | null
           contact_email?: string | null
           contact_phone?: string | null
+          country?: string | null
           created_at?: string | null
+          description?: string | null
+          does_crt_custom_wheelchairs?: boolean | null
+          does_home_modifications?: boolean | null
+          does_in_home_service?: boolean | null
+          does_installation?: boolean | null
+          does_insurance_coordination?: boolean | null
+          does_rentals?: boolean | null
+          does_repairs?: boolean | null
+          does_sales?: boolean | null
+          does_seating_positioning?: boolean | null
+          does_wheelchair_evals_clinical?: boolean | null
+          geo_precision?: string | null
+          hours?: string | null
           id?: string
+          insurance_accepted?: string[] | null
+          last_verified_at?: string | null
           lat?: number | null
           lng?: number | null
-          location: string
+          location?: string | null
           name: string
+          needs_verification?: boolean | null
+          phone?: string | null
+          populations_served?: string[] | null
+          postal_code?: string | null
+          provider_type?: string | null
           rating?: number | null
           review_count?: number | null
+          service_area?: string | null
+          service_kinds?: string[] | null
+          services_offered?: string | null
           specialty?: string[] | null
+          state?: string | null
           status?: string | null
           type: string
           updated_at?: string | null
           website?: string | null
         }
         Update: {
+          accepts_medicaid?: boolean | null
+          accepts_medicare?: boolean | null
           address?: string
           availability?: string | null
+          capabilities?: string[] | null
+          city?: string | null
+          conditions_served?: string[] | null
           contact_email?: string | null
           contact_phone?: string | null
+          country?: string | null
           created_at?: string | null
+          description?: string | null
+          does_crt_custom_wheelchairs?: boolean | null
+          does_home_modifications?: boolean | null
+          does_in_home_service?: boolean | null
+          does_installation?: boolean | null
+          does_insurance_coordination?: boolean | null
+          does_rentals?: boolean | null
+          does_repairs?: boolean | null
+          does_sales?: boolean | null
+          does_seating_positioning?: boolean | null
+          does_wheelchair_evals_clinical?: boolean | null
+          geo_precision?: string | null
+          hours?: string | null
           id?: string
+          insurance_accepted?: string[] | null
+          last_verified_at?: string | null
           lat?: number | null
           lng?: number | null
-          location?: string
+          location?: string | null
           name?: string
+          needs_verification?: boolean | null
+          phone?: string | null
+          populations_served?: string[] | null
+          postal_code?: string | null
+          provider_type?: string | null
           rating?: number | null
           review_count?: number | null
+          service_area?: string | null
+          service_kinds?: string[] | null
+          services_offered?: string | null
           specialty?: string[] | null
+          state?: string | null
           status?: string | null
           type?: string
           updated_at?: string | null
@@ -3810,6 +4206,39 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      task_assignees: {
+        Row: {
+          created_at: string
+          employee_id: string
+          task_id: string
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          task_id: string
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_assignees_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignees_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tasks: {
         Row: {
@@ -4318,6 +4747,126 @@ export type Database = {
           patient_code: string
         }[]
       }
+      search_provider_directory:
+        | {
+            Args: {
+              exclude_pediatric_only?: boolean
+              max_results?: number
+              provider_types?: string[]
+              radius_miles?: number
+              require_clinical_eval?: boolean
+              require_crt?: boolean
+              require_home_modifications?: boolean
+              require_installation?: boolean
+              require_rentals?: boolean
+              require_repairs?: boolean
+              require_sales?: boolean
+              require_seating?: boolean
+              user_lat: number
+              user_lng: number
+            }
+            Returns: {
+              accepts_medicaid: boolean
+              accepts_medicare: boolean
+              address: string
+              availability: string
+              capabilities: string[]
+              city: string
+              conditions_served: string[]
+              contact_email: string
+              description: string
+              distance_miles: number
+              does_crt_custom_wheelchairs: boolean
+              does_home_modifications: boolean
+              does_in_home_service: boolean
+              does_installation: boolean
+              does_insurance_coordination: boolean
+              does_rentals: boolean
+              does_repairs: boolean
+              does_sales: boolean
+              does_seating_positioning: boolean
+              does_wheelchair_evals_clinical: boolean
+              geo_precision: string
+              hours: string
+              id: string
+              insurance_accepted: string[]
+              last_verified_at: string
+              lat: number
+              lng: number
+              name: string
+              needs_verification: boolean
+              phone: string
+              populations_served: string[]
+              postal_code: string
+              provider_type: string
+              service_area: string
+              service_kinds: string[]
+              services_offered: string
+              state: string
+              type: string
+              website: string
+            }[]
+          }
+        | {
+            Args: {
+              exclude_pediatric_only?: boolean
+              max_results?: number
+              provider_types?: string[]
+              radius_miles?: number
+              require_clinical_eval?: boolean
+              require_crt?: boolean
+              require_home_modifications?: boolean
+              require_installation?: boolean
+              require_rentals?: boolean
+              require_repairs?: boolean
+              require_sales?: boolean
+              require_seating?: boolean
+              text_query?: string
+              user_lat: number
+              user_lng: number
+            }
+            Returns: {
+              accepts_medicaid: boolean
+              accepts_medicare: boolean
+              address: string
+              availability: string
+              capabilities: string[]
+              city: string
+              conditions_served: string[]
+              contact_email: string
+              description: string
+              distance_miles: number
+              does_crt_custom_wheelchairs: boolean
+              does_home_modifications: boolean
+              does_in_home_service: boolean
+              does_installation: boolean
+              does_insurance_coordination: boolean
+              does_rentals: boolean
+              does_repairs: boolean
+              does_sales: boolean
+              does_seating_positioning: boolean
+              does_wheelchair_evals_clinical: boolean
+              geo_precision: string
+              hours: string
+              id: string
+              insurance_accepted: string[]
+              last_verified_at: string
+              lat: number
+              lng: number
+              name: string
+              needs_verification: boolean
+              phone: string
+              populations_served: string[]
+              postal_code: string
+              provider_type: string
+              service_area: string
+              service_kinds: string[]
+              services_offered: string
+              state: string
+              type: string
+              website: string
+            }[]
+          }
     }
     Enums: {
       [_ in never]: never
@@ -4336,12 +4885,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4365,11 +4914,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4390,11 +4939,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4415,11 +4964,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4432,11 +4981,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

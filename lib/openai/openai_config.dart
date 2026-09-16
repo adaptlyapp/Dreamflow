@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:wellspring/models/goal.dart' as app;
 import 'package:wellspring/supabase/supabase_config.dart';
 
 /// Centralized AI usage policy for consent, de-identification, and throttling.
@@ -212,6 +213,154 @@ class OpenAIClient {
   OpenAIClient();
 
   static const String _functionName = 'openai_chat_proxy';
+
+  /// True when the failure is a transient OpenAI/proxy condition (rate limit,
+  /// timeout, gateway error) rather than a permanent one.
+  static bool isTransientAiError(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('rate limit') ||
+        msg.contains('429') ||
+        msg.contains('timeout') ||
+        msg.contains('timeoutexception') ||
+        msg.contains('502') ||
+        msg.contains('503') ||
+        msg.contains('504') ||
+        msg.contains('overloaded') ||
+        msg.contains('temporarily');
+  }
+
+  /// Computes how long to wait before retrying. When OpenAI tells us exactly
+  /// how long to wait ("Please try again in 9.87s") we honour that value,
+  /// otherwise we back off exponentially.
+  static Duration suggestedRetryDelay(Object error, {required int attempt}) {
+    final msg = error.toString();
+    final match = RegExp(r'try again in\s+([0-9]*\.?[0-9]+)\s*(ms|s)', caseSensitive: false).firstMatch(msg);
+    if (match != null) {
+      final value = double.tryParse(match.group(1) ?? '') ?? 0;
+      final isMs = (match.group(2) ?? 's').toLowerCase() == 'ms';
+      final ms = isMs ? value : value * 1000;
+      // Add a small buffer so we don't land right on the boundary.
+      final waitMs = (ms + 600).clamp(500, 20000).toInt();
+      return Duration(milliseconds: waitMs);
+    }
+    if (isTransientAiError(error)) {
+      return Duration(milliseconds: (1500 * attempt).clamp(1500, 9000));
+    }
+    return Duration(milliseconds: 500 * attempt);
+  }
+
+  /// Parses a JSON object from a model response, tolerating code fences and
+  /// **truncated** output (which happens when the model hits `max_tokens`).
+  ///
+  /// When the payload is incomplete we rewind to the last structurally complete
+  /// value, drop the dangling fragment, and close any open brackets. That keeps
+  /// a partial-but-useful answer instead of throwing a `FormatException`.
+  static Map<String, dynamic>? tryParseJsonObject(String? raw) {
+    if (raw == null) return null;
+    var text = raw.trim();
+    if (text.isEmpty) return null;
+
+    // Strip markdown code fences if present.
+    if (text.startsWith('```')) {
+      text = text.replaceFirst(RegExp(r'^```[a-zA-Z]*\s*'), '');
+      final fenceEnd = text.lastIndexOf('```');
+      if (fenceEnd >= 0) text = text.substring(0, fenceEnd);
+      text = text.trim();
+    }
+    final start = text.indexOf('{');
+    if (start < 0) return null;
+    if (start > 0) text = text.substring(start);
+
+    Map<String, dynamic>? decode(String candidate) {
+      try {
+        final parsed = jsonDecode(candidate);
+        if (parsed is Map) return Map<String, dynamic>.from(parsed);
+      } catch (_) {}
+      return null;
+    }
+
+    final direct = decode(text);
+    if (direct != null) return direct;
+
+    // ---- Repair path: the JSON is very likely truncated. ----
+    final stack = <String>[];
+    var inString = false;
+    var escaped = false;
+    // Exclusive end index of the last structurally complete value.
+    var cut = -1;
+
+    for (var i = 0; i < text.length; i++) {
+      final ch = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch == r'\') {
+          escaped = true;
+        } else if (ch == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      switch (ch) {
+        case '"':
+          inString = true;
+          break;
+        case '{':
+          stack.add('}');
+          break;
+        case '[':
+          stack.add(']');
+          break;
+        case '}':
+        case ']':
+          if (stack.isNotEmpty) stack.removeLast();
+          cut = i + 1;
+          break;
+        case ',':
+          cut = i;
+          break;
+      }
+    }
+
+    if (cut <= 0) return null;
+    var truncated = text.substring(0, cut).trimRight();
+    while (truncated.endsWith(',')) {
+      truncated = truncated.substring(0, truncated.length - 1).trimRight();
+    }
+
+    // Recompute open brackets for the truncated prefix and close them.
+    final closers = <String>[];
+    inString = false;
+    escaped = false;
+    for (var i = 0; i < truncated.length; i++) {
+      final ch = truncated[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch == r'\') {
+          escaped = true;
+        } else if (ch == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = true;
+      } else if (ch == '{') {
+        closers.add('}');
+      } else if (ch == '[') {
+        closers.add(']');
+      } else if (ch == '}' || ch == ']') {
+        if (closers.isNotEmpty) closers.removeLast();
+      }
+    }
+    final repaired = truncated + closers.reversed.join();
+    final salvaged = decode(repaired);
+    if (salvaged != null) {
+      debugPrint('[OpenAIClient] Recovered truncated JSON response (${raw.length} chars) by salvaging partial content');
+    }
+    return salvaged;
+  }
 
   static Future<Map<String, dynamic>> _invokeOpenAiProxy(
     Map<String, dynamic> openAiBody, {
@@ -1729,6 +1878,575 @@ Important:
         attempt += 1;
         if (attempt >= 2) rethrow;
         await Future.delayed(Duration(milliseconds: 400 * attempt));
+      }
+    }
+  }
+}
+
+class ArieSupportResponse {
+  final String answer;
+  final List<String> steps;
+  final List<ArieResourceRecommendation> recommendations;
+  final List<String> safetyNotes;
+
+  const ArieSupportResponse({
+    required this.answer,
+    required this.steps,
+    required this.recommendations,
+    required this.safetyNotes,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'answer': answer,
+        'steps': steps,
+        'recommendations': [for (final r in recommendations) r.toJson()],
+        'safetyNotes': safetyNotes,
+      };
+}
+
+/// A lightweight, actionable plan a user can follow after selecting a specific
+/// resource recommendation.
+///
+/// This is intentionally simple so it can be persisted into existing tables
+/// (milestones + goals) without requiring new database schema.
+class ArieActionPlan {
+  final String title;
+  final String? summary;
+  final List<ArieActionPlanStep> steps;
+
+  const ArieActionPlan({
+    required this.title,
+    required this.steps,
+    this.summary,
+  });
+
+  factory ArieActionPlan.fromJson(Map<String, dynamic> json) {
+    final raw = json['steps'];
+    final steps = <ArieActionPlanStep>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map<String, dynamic>) {
+          steps.add(ArieActionPlanStep.fromJson(item));
+        } else if (item is Map) {
+          steps.add(ArieActionPlanStep.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    return ArieActionPlan(
+      title: (json['title'] ?? '').toString().trim(),
+      summary: json['summary']?.toString(),
+      steps: steps.where((s) => s.title.trim().isNotEmpty).toList(growable: false),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        if (summary != null) 'summary': summary,
+        'steps': [for (final s in steps) s.toJson()],
+      };
+}
+
+class ArieActionPlanStep {
+  final String title;
+  final String? description;
+  final int? dueInDays;
+  final String helpType;
+
+  const ArieActionPlanStep({
+    required this.title,
+    required this.helpType,
+    this.description,
+    this.dueInDays,
+  });
+
+  factory ArieActionPlanStep.fromJson(Map<String, dynamic> json) {
+    int? toInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString());
+    }
+
+    final helpType = (json['helpType'] ?? json['help_type'] ?? 'action').toString().trim();
+    return ArieActionPlanStep(
+      title: (json['title'] ?? '').toString(),
+      description: json['description']?.toString(),
+      dueInDays: toInt(json['dueInDays'] ?? json['due_in_days']),
+      helpType: helpType.isEmpty ? 'action' : helpType,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        if (description != null) 'description': description,
+        if (dueInDays != null) 'dueInDays': dueInDays,
+        'helpType': helpType,
+      };
+}
+
+class ArieResourceRecommendation {
+  final String id;
+  final String name;
+  final String? type;
+  final String? reason;
+  final double? distanceMiles;
+  final double? rating;
+  final int? reviewCount;
+
+  /// Structured details for the resource. Keys should align with
+  /// context.resourceDetailFields when provided.
+  final Map<String, String?> details;
+
+  /// A richer, category-agnostic resource record.
+  ///
+  /// This is intentionally a Map to allow us to evolve fields without
+  /// breaking older clients. ARIE should still avoid inventing facts;
+  /// unknown fields should be null.
+  final Map<String, dynamic> universalRecord;
+
+  /// Optional relationship reasoning / graph edges describing how this
+  /// resource could connect to other resources (funding stacking, referrals,
+  /// alternatives, etc.).
+  final List<Map<String, dynamic>> relationships;
+
+  /// Practical questions the user can ask when details are unknown.
+  final List<String> questionsToAsk;
+
+  const ArieResourceRecommendation({
+    required this.id,
+    required this.name,
+    this.type,
+    this.reason,
+    this.distanceMiles,
+    this.rating,
+    this.reviewCount,
+    this.details = const {},
+    this.universalRecord = const {},
+    this.relationships = const [],
+    this.questionsToAsk = const [],
+  });
+
+  factory ArieResourceRecommendation.fromJson(Map<String, dynamic> json) {
+    double? _toDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString());
+    }
+
+    int? _toInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString());
+    }
+
+    Map<String, String?> _details(dynamic v) {
+      if (v is Map) {
+        final out = <String, String?>{};
+        for (final e in v.entries) {
+          final k = e.key.toString();
+          final val = e.value;
+          out[k] = val == null ? null : val.toString();
+        }
+        return out;
+      }
+      return const {};
+    }
+
+    Map<String, dynamic> _map(dynamic v) {
+      if (v is Map<String, dynamic>) return v;
+      if (v is Map) {
+        try {
+          return Map<String, dynamic>.from(v);
+        } catch (_) {
+          return const {};
+        }
+      }
+      return const {};
+    }
+
+    List<Map<String, dynamic>> _relationships(dynamic v) {
+      if (v is List) {
+        return v
+            .where((e) => e != null)
+            .map<Map<String, dynamic>>((e) {
+              if (e is Map<String, dynamic>) return e;
+              if (e is Map) return Map<String, dynamic>.from(e);
+              return const <String, dynamic>{};
+            })
+            .where((m) => m.isNotEmpty)
+            .toList(growable: false);
+      }
+      return const [];
+    }
+
+    return ArieResourceRecommendation(
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      type: json['type']?.toString(),
+      reason: json['reason']?.toString(),
+      distanceMiles: _toDouble(json['distanceMiles']),
+      rating: _toDouble(json['rating']),
+      reviewCount: _toInt(json['reviewCount']),
+      details: _details(json['details']),
+      universalRecord: _map(json['universalRecord'] ?? json['universal_record']),
+      relationships: _relationships(json['relationships'] ?? json['resourceRelationships'] ?? json['resource_relationships']),
+      questionsToAsk: (json['questionsToAsk'] is List)
+          ? List<String>.from((json['questionsToAsk'] as List).map((e) => e.toString()))
+          : const [],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        if (type != null) 'type': type,
+        if (reason != null) 'reason': reason,
+        if (distanceMiles != null) 'distanceMiles': distanceMiles,
+        if (rating != null) 'rating': rating,
+        if (reviewCount != null) 'reviewCount': reviewCount,
+        if (details.isNotEmpty) 'details': details,
+        if (universalRecord.isNotEmpty) 'universalRecord': universalRecord,
+        if (relationships.isNotEmpty) 'relationships': relationships,
+        if (questionsToAsk.isNotEmpty) 'questionsToAsk': questionsToAsk,
+      };
+}
+
+extension OpenAIClientArieSupport on OpenAIClient {
+  /// Generates a patient-facing, explainable, context-aware answer.
+  ///
+  /// [contextJson] should be a JSON string that contains:
+  /// - patient profile + condition details
+  /// - tracker summary (longitudinal)
+  /// - permission-aware location (optional, coarse)
+  /// - candidate resources with local scores
+  Future<ArieSupportResponse> generatePersonalizedSupport({
+    required String contextJson,
+  }) async {
+    if (!AiSafetyPolicy.enabled) {
+      throw Exception('AI suggestions are disabled in Settings');
+    }
+    if (!AiSafetyPolicy.allowAnotherCallNow()) {
+      await AiSafetyPolicy.waitForSlot();
+      if (!AiSafetyPolicy.allowAnotherCallNow()) {
+        throw Exception('Too many AI requests — please wait a moment and try again');
+      }
+    }
+
+    String prompt() {
+      final safe = AiSafetyPolicy.deidentify ? PHIRedactor.redact(contextJson) : contextJson;
+      return '''
+You are ARIE, an assistive care-navigation intelligence layer inside a health app.
+
+You MUST:
+- Use the provided context bundle.
+- Avoid medical diagnosis.
+- Avoid claiming causation from tracker correlations.
+- Be explicit about uncertainty.
+- Use location ONLY if included in the context (and treat it as coarse / approximate).
+
+When recommending resources:
+- You MUST try to fill the fields listed in context.resourceDetailFields.
+- If you do not have enough evidence for a field, set it to null and add a concrete question in questionsToAsk.
+- Do NOT invent prices, insurance acceptance, or accessibility claims.
+
+Universal Resource Record requirements:
+- Each recommendation MUST include a "universalRecord" object.
+- Fill values ONLY if the context provides evidence (e.g., candidateResources fields, or user-provided text in the question).
+- Otherwise, set the field to null (or [] for arrays) and add questionsToAsk that would let the user verify.
+- Include verification metadata: "source", "sourceReliability", and "lastVerifiedDate" when available from context.
+
+Given the JSON context below, produce a single JSON object response in EXACTLY this schema:
+{
+  "answer": "2-5 sentences. Direct, supportive, and tailored to the patient context.",
+  "steps": ["3-6 concrete next steps"],
+  "recommendations": [
+    {
+      "id": "resource id from candidateResources",
+      "name": "resource name",
+      "type": "resource type",
+      "distanceMiles": 0,
+      "rating": 0,
+      "reviewCount": 0,
+      "reason": "1-2 sentences explaining why this matches condition, accessibility, and geography.",
+      "details": {
+        "<eachFieldFromContextResourceDetailFields>": "string or null"
+      },
+      "universalRecord": {
+        "name": "string",
+        "category": "string",
+        "subcategory": "string or null",
+        "description": "string or null",
+        "location": "string or null",
+        "serviceArea": "string or null",
+        "onlineInPersonAvailability": "in_person|telehealth|hybrid|online|unknown|null",
+        "contactInformation": {"phone": "string or null", "email": "string or null"},
+        "website": "string or null",
+        "populationsServed": ["string"],
+        "disabilityFocus": ["string"],
+        "ageRestrictions": "string or null",
+        "eligibility": "string or null",
+        "insuranceAccepted": ["string"],
+        "fundingAccepted": ["string"],
+        "cost": "string or null",
+        "financialAssistance": "string or null",
+        "accessibilityFeatures": ["string"],
+        "servicesOffered": ["string"],
+        "availabilityWaitlist": "string or null",
+        "hours": "string or null",
+        "referralRequirements": "string or null",
+        "applicationProcess": "string or null",
+        "requiredDocumentation": ["string"],
+        "deadlines": "string or null",
+        "languages": ["string"],
+        "transportationOptions": ["string"],
+        "caregiverPolicies": "string or null",
+        "reviews": {
+          "rating": "number or null",
+          "reviewCount": "number or null",
+          "notes": "string or null"
+        },
+        "userNotes": "string or null",
+        "source": "google_places|openstreetmap|curated|suggestion|unknown",
+        "sourceReliability": "high|medium|low|unknown",
+        "lastVerifiedDate": "ISO-8601 or null",
+        "currentStatus": "active|unknown|discontinued|null"
+      },
+      "relationships": [
+        {
+          "type": "resource_referral|funding_stacking|alternative_resource|geographic_coverage|verification_status|availability_status",
+          "fromResourceId": "string",
+          "toResourceName": "string",
+          "description": "string"
+        }
+      ],
+      "questionsToAsk": ["2-6 short, practical questions to confirm unknowns"]
+    }
+  ],
+  "safetyNotes": ["1-3 short safety notes, e.g., when to contact care team" ]
+}
+
+Rules:
+- If candidateResources is empty, recommendations MUST be [].
+- Use the candidate resource ordering as a strong prior (highest score first), but you may omit items that clearly don't fit.
+- Prefer fewer, higher-quality recommendations (0-4 items).
+- Keep language non-clinical.
+- Do not include URLs.
+- details must include ALL keys from context.resourceDetailFields (even if null).
+- universalRecord must always be present, even when sparse.
+
+Context JSON:
+$safe
+''';
+    }
+
+    Map<String, dynamic> body() => {
+          // ARIE support prompts carry a large context bundle. `gpt-4o` shares a
+          // small 30k tokens-per-minute pool, so two or three questions in a row
+          // reliably tripped 429 rate limits. `gpt-4o-mini` has a much larger TPM
+          // allowance and is sufficient for this structured extraction task.
+          'model': 'gpt-4o-mini',
+          'temperature': 0.5,
+          // The recommendation schema (details + 35-field universalRecord per
+          // item) easily exceeds 1600 tokens, which truncated the JSON mid
+          // string and made every parse fail. Give the model real room.
+          'max_tokens': 4000,
+          'response_format': {'type': 'json_object'},
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'You are an assistant that outputs ONLY valid JSON objects matching the requested schema. No extra text. Output must be a single JSON object.'
+            },
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt()},
+              ]
+            }
+          ]
+        };
+
+    int attempt = 0;
+    while (true) {
+      try {
+        final data = await OpenAIClient._invokeOpenAiProxy(body(), timeout: const Duration(seconds: 40));
+        AiSafetyPolicy.recordCall();
+        final content = data['choices']?[0]?['message']?['content'];
+        String? jsonText;
+        if (content is String) {
+          jsonText = content;
+        } else if (content is List) {
+          try {
+            final buf = StringBuffer();
+            for (final part in content) {
+              final type = part['type'];
+              if (type == 'output_text' || type == 'text') {
+                final t = part['text'];
+                if (t is String) buf.write(t);
+              }
+            }
+            jsonText = buf.isEmpty ? null : buf.toString();
+          } catch (e) {
+            debugPrint('OpenAI content parts parse error (arie support): $e');
+          }
+        }
+
+        if (jsonText == null || jsonText.trim().isEmpty) throw Exception('Empty AI response');
+        final finishReason = (data['choices']?[0]?['finish_reason'] ?? '').toString();
+        if (finishReason == 'length') {
+          debugPrint('[ARIE] Model output hit the token limit — salvaging partial JSON');
+        }
+        final parsed = OpenAIClient.tryParseJsonObject(jsonText);
+        if (parsed == null) throw const FormatException('AI response was not valid JSON');
+        final answer = (parsed['answer'] ?? '').toString().trim();
+        final steps = (parsed['steps'] is List)
+            ? List<String>.from((parsed['steps'] as List).map((e) => e.toString()))
+            : <String>[];
+        final safetyNotes = (parsed['safetyNotes'] is List)
+            ? List<String>.from((parsed['safetyNotes'] as List).map((e) => e.toString()))
+            : <String>[];
+
+        final recs = <ArieResourceRecommendation>[];
+        final rawRecs = parsed['recommendations'];
+        if (rawRecs is List) {
+          for (final item in rawRecs) {
+            // A salvaged (truncated) payload can contain one malformed trailing
+            // item; skip it rather than dropping every recommendation.
+            try {
+              if (item is Map<String, dynamic>) {
+                recs.add(ArieResourceRecommendation.fromJson(item));
+              } else if (item is Map) {
+                recs.add(ArieResourceRecommendation.fromJson(item.cast<String, dynamic>()));
+              }
+            } catch (e) {
+              debugPrint('[ARIE] Skipping unparsable recommendation: $e');
+            }
+          }
+        }
+
+        return ArieSupportResponse(
+          answer: answer.isEmpty ? 'I can help with that — could you share a bit more detail?' : answer,
+          steps: steps,
+          recommendations: recs.where((r) => r.id.trim().isNotEmpty && r.name.trim().isNotEmpty).toList(growable: false),
+          safetyNotes: safetyNotes,
+        );
+      } catch (e) {
+        attempt += 1;
+        if (attempt >= 3) rethrow;
+        final wait = OpenAIClient.suggestedRetryDelay(e, attempt: attempt);
+        debugPrint('ARIE support attempt $attempt failed ($e) — retrying in ${wait.inMilliseconds}ms');
+        await Future.delayed(wait);
+      }
+    }
+  }
+}
+
+// ------------------------------
+// OpenAI: action plan from a chosen resource
+// ------------------------------
+
+extension OpenAIClientArieActionPlan on OpenAIClient {
+  Future<ArieActionPlan> generateActionPlanForSelectedResource({
+    required String contextJson,
+  }) async {
+    if (!AiSafetyPolicy.enabled) throw Exception('AI suggestions are disabled in Settings');
+    if (!AiSafetyPolicy.allowAnotherCallNow()) {
+      await AiSafetyPolicy.waitForSlot();
+      if (!AiSafetyPolicy.allowAnotherCallNow()) {
+        throw Exception('Too many AI requests — please wait a moment and try again');
+      }
+    }
+
+    String prompt() {
+      final safe = AiSafetyPolicy.deidentify ? PHIRedactor.redact(contextJson) : contextJson;
+      return '''
+You are ARIE, a care-navigation assistant inside a health app.
+
+Goal: the user selected a specific resource recommendation. Create a practical action plan to help them actually use it.
+
+You MUST:
+- Avoid medical diagnosis.
+- Avoid inventing facts about the resource.
+- Be explicit about uncertainty.
+- Keep steps short and executable.
+
+Output a single JSON object in EXACTLY this schema:
+{
+  "title": "Short plan title",
+  "summary": "1-2 sentences (optional)",
+  "steps": [
+    {
+      "title": "Step title",
+      "description": "1-2 sentences (optional)",
+      "dueInDays": 0,
+      "helpType": "expert|action|learning|tracking|community|environment|product"
+    }
+  ]
+}
+
+Rules:
+- 4 to 7 steps.
+- If the recommendation is missing details, include a step that uses questionsToAsk.
+- Prefer a sequence like: verify fit -> call/schedule -> prep docs -> attend/next follow-up.
+- dueInDays should be realistic (0, 1, 3, 7, 14, 30). Use null if unknown.
+
+Context JSON:
+$safe
+''';
+    }
+
+    Map<String, dynamic> body() => {
+          'model': 'gpt-4o-mini',
+          'temperature': 0.4,
+          'max_tokens': 2000,
+          'response_format': {'type': 'json_object'},
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'You are an assistant that outputs ONLY valid JSON objects matching the requested schema. No extra text.'
+            },
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt()},
+              ]
+            }
+          ]
+        };
+
+    int attempt = 0;
+    while (true) {
+      try {
+        final data = await OpenAIClient._invokeOpenAiProxy(body(), timeout: const Duration(seconds: 28));
+        AiSafetyPolicy.recordCall();
+        final content = data['choices']?[0]?['message']?['content'];
+        String? jsonText;
+        if (content is String) {
+          jsonText = content;
+        } else if (content is List) {
+          final buf = StringBuffer();
+          for (final part in content) {
+            final type = part['type'];
+            if (type == 'output_text' || type == 'text') {
+              final t = part['text'];
+              if (t is String) buf.write(t);
+            }
+          }
+          jsonText = buf.isEmpty ? null : buf.toString();
+        }
+
+        if (jsonText == null || jsonText.trim().isEmpty) throw Exception('Empty AI response');
+        final parsed = OpenAIClient.tryParseJsonObject(jsonText);
+        if (parsed == null) throw const FormatException('AI response was not valid JSON');
+        final plan = ArieActionPlan.fromJson(parsed);
+        if (plan.title.trim().isEmpty || plan.steps.isEmpty) {
+          throw Exception('Malformed action plan');
+        }
+        return plan;
+      } catch (e) {
+        attempt += 1;
+        if (attempt >= 2) rethrow;
+        await Future.delayed(Duration(milliseconds: 500 * attempt));
       }
     }
   }

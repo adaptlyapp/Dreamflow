@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:wellspring/models/user.dart';
 import 'package:wellspring/providers/user_provider.dart';
 import 'package:wellspring/services/family_service.dart';
 import 'package:wellspring/services/user_service.dart';
 import 'package:wellspring/theme.dart';
+import 'package:wellspring/widgets/glass_card.dart';
 
 class FamilyOnboardingScreen extends StatefulWidget {
   const FamilyOnboardingScreen({super.key});
@@ -37,6 +37,47 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
     'Other',
   ];
 
+  static const int _totalSteps = 4;
+
+  static const List<String> _stepLabels = [
+    'Welcome',
+    'Connect',
+    'Privacy',
+    'Done',
+  ];
+
+  bool get _isLight => Theme.of(context).brightness == Brightness.light;
+
+  InputDecoration _onboardingFieldDecoration({required String labelText, String? hintText, IconData? prefixIcon}) {
+    final cs = Theme.of(context).colorScheme;
+    final fillColor = _isLight ? Colors.white.withValues(alpha: 0.92) : Colors.white.withValues(alpha: 0.06);
+    final fg = _isLight ? Colors.black : Colors.white;
+    final subtle = fg.withValues(alpha: 0.7);
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      filled: true,
+      fillColor: fillColor,
+      prefixIcon: prefixIcon == null ? null : Icon(prefixIcon, color: subtle),
+      labelStyle: context.textStyles.bodyMedium?.withColor(subtle),
+      floatingLabelStyle: context.textStyles.bodyMedium?.withColor(fg.withValues(alpha: 0.92)),
+      hintStyle: context.textStyles.bodyMedium?.withColor(subtle),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: BorderSide(color: cs.primary.withValues(alpha: 0.55), width: 1),
+      ),
+      isDense: true,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -54,10 +95,10 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
   }
 
   void _nextPage() {
-    if (_currentPage < 3) {
+    if (_currentPage < _totalSteps - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
       );
     }
   }
@@ -168,99 +209,255 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          SafeArea(
-            child: Column(
-              children: [
-                // Top bar with skip button and progress indicator
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.md),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          // Empty space for alignment
-                          const SizedBox(width: 80),
-                          // Progress indicators
-                          Expanded(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(4, (index) {
-                                final isActive = index == _currentPage;
-                                final isPast = index < _currentPage;
-                                return Container(
-                                  width: 32,
-                                  height: 4,
-                                  margin: EdgeInsets.only(
-                                    right: index < 3 ? AppSpacing.xs : 0,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isActive || isPast
-                                        ? cs.primary
-                                        : isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                );
-                              }),
-                            ),
-                          ),
-                          // Skip button
-                          TextButton(
-                            onPressed: _loading ? null : _completeOnboarding,
-                            style: TextButton.styleFrom(
-                              foregroundColor: cs.primary,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.md,
-                                vertical: AppSpacing.sm,
-                              ),
-                            ),
-                            child: const Text('Skip', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Pages
-                Expanded(
-                  child: PageView(
-                    controller: _pageController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    onPageChanged: (page) => setState(() => _currentPage = page),
-                    children: [
-                      _WelcomePage(onNext: _nextPage),
-                      _ConnectPage(
-                        nameController: _nameController,
-                        codeController: _codeController,
-                        selectedRelationship: _selectedRelationship,
-                        relationships: _relationships,
-                        onRelationshipChanged: (value) =>
-                            setState(() => _selectedRelationship = value),
-                        onConnect: _connectToPatient,
-                        loading: _loading,
-                        error: _error,
-                      ),
-                      _PermissionsPage(onNext: _nextPage),
-                      _TutorialPage(
-                        onComplete: _completeOnboarding,
-                        loading: _loading,
-                        error: _error,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    final titleColor = _isLight ? Colors.black : Colors.white;
+    return GlassyScaffold(
+      resizeToAvoidBottomInset: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: titleColor),
+          onPressed: () async {
+            if (_currentPage > 0) {
+              await _pageController.previousPage(duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+              return;
+            }
+            try {
+              await context.read<UserProvider>().logout();
+            } catch (e) {
+              debugPrint('FamilyOnboarding logout error: $e');
+            }
+            if (!context.mounted) return;
+            context.go('/auth');
+          },
+        ),
+        title: Text(
+          'Family setup',
+          style: context.textStyles.titleLarge?.semiBold?.withColor(titleColor),
+        ),
+        centerTitle: true,
+        actions: [
+          TextButton(
+            onPressed: _loading ? null : _completeOnboarding,
+            style: TextButton.styleFrom(foregroundColor: cs.primary),
+            child: Text('Skip', style: context.textStyles.labelLarge?.semiBold?.withColor(cs.primary)),
           ),
         ],
       ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.lg),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: GlassCard(
+                showGlow: true,
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _FamilyOnboardingTopBar(
+                      currentStep: _currentPage,
+                      totalSteps: _totalSteps,
+                      stepLabel: _stepLabels[_currentPage.clamp(0, _stepLabels.length - 1)],
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _FamilyProgressBar(value: (_currentPage + 1) / _totalSteps),
+                    const SizedBox(height: AppSpacing.lg),
+                    Expanded(
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: _totalSteps,
+                        onPageChanged: (page) => setState(() => _currentPage = page),
+                        itemBuilder: (context, index) {
+                          final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+                          return AnimatedBuilder(
+                            animation: _pageController,
+                            builder: (context, child) {
+                              final page = _pageController.hasClients ? (_pageController.page ?? _currentPage.toDouble()) : _currentPage.toDouble();
+                              final dist = (page - index).abs().clamp(0.0, 1.0);
+                              final t = 1.0 - dist;
+                              final opacity = 0.55 + (0.45 * t);
+                              final scale = 0.98 + (0.02 * t);
+                              return Opacity(
+                                opacity: opacity,
+                                child: Transform.scale(
+                                  scale: scale,
+                                  alignment: Alignment.topCenter,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: SingleChildScrollView(
+                              padding: EdgeInsets.fromLTRB(0, 0, 0, AppSpacing.lg + bottomInset),
+                              child: _FamilyOnboardingStep(
+                                index: index,
+                                onNext: _nextPage,
+                                onComplete: _completeOnboarding,
+                                onConnect: _connectToPatient,
+                                loading: _loading,
+                                error: _error,
+                                nameController: _nameController,
+                                codeController: _codeController,
+                                selectedRelationship: _selectedRelationship,
+                                relationships: _relationships,
+                                onRelationshipChanged: (value) => setState(() => _selectedRelationship = value),
+                                fieldDecoration: _onboardingFieldDecoration,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
+  }
+}
+
+class _FamilyOnboardingTopBar extends StatelessWidget {
+  const _FamilyOnboardingTopBar({required this.currentStep, required this.totalSteps, required this.stepLabel});
+
+  final int currentStep;
+  final int totalSteps;
+  final String stepLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final titleColor = isLight ? Colors.black : Colors.white;
+    final subtitleColor = titleColor.withValues(alpha: 0.7);
+
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: isLight ? 0.12 : 0.16),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            'Step ${currentStep + 1} of $totalSteps',
+            style: context.textStyles.labelMedium?.semiBold?.withColor(cs.primary),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(stepLabel, style: context.textStyles.titleMedium?.semiBold?.withColor(titleColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              Text(
+                'Set up your access to your loved one\'s journey.',
+                style: context.textStyles.bodySmall?.withColor(subtitleColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FamilyProgressBar extends StatelessWidget {
+  const _FamilyProgressBar({required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bg = Theme.of(context).brightness == Brightness.light
+        ? Colors.black.withValues(alpha: 0.06)
+        : Colors.white.withValues(alpha: 0.10);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 10,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(decoration: BoxDecoration(color: bg)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: value.clamp(0.0, 1.0),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: cs.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FamilyOnboardingStep extends StatelessWidget {
+  const _FamilyOnboardingStep({
+    required this.index,
+    required this.onNext,
+    required this.onComplete,
+    required this.onConnect,
+    required this.loading,
+    required this.nameController,
+    required this.codeController,
+    required this.selectedRelationship,
+    required this.relationships,
+    required this.onRelationshipChanged,
+    required this.fieldDecoration,
+    this.error,
+  });
+
+  final int index;
+  final VoidCallback onNext;
+  final VoidCallback onComplete;
+  final VoidCallback onConnect;
+  final bool loading;
+  final String? error;
+  final TextEditingController nameController;
+  final TextEditingController codeController;
+  final String selectedRelationship;
+  final List<String> relationships;
+  final ValueChanged<String> onRelationshipChanged;
+  final InputDecoration Function({required String labelText, String? hintText, IconData? prefixIcon}) fieldDecoration;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (index) {
+      case 0:
+        return _WelcomePage(onNext: onNext);
+      case 1:
+        return _ConnectPage(
+          nameController: nameController,
+          codeController: codeController,
+          selectedRelationship: selectedRelationship,
+          relationships: relationships,
+          onRelationshipChanged: onRelationshipChanged,
+          onConnect: onConnect,
+          loading: loading,
+          error: error,
+          fieldDecoration: fieldDecoration,
+        );
+      case 2:
+        return _PermissionsPage(onNext: onNext);
+      default:
+        return _TutorialPage(onComplete: onComplete, loading: loading, error: error);
+    }
   }
 }
 
@@ -272,8 +469,10 @@ class _WelcomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = isDark ? Colors.white : Colors.black;
+    final muted = fg.withValues(alpha: 0.72);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xxl),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.lg),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -294,7 +493,7 @@ class _WelcomePage extends StatelessWidget {
           Text(
             'Welcome to Adaptly Family',
             style: context.textStyles.displaySmall?.copyWith(
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
+              color: fg,
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
@@ -303,7 +502,7 @@ class _WelcomePage extends StatelessWidget {
           Text(
             'Stay connected to your loved one\'s recovery journey and provide support every step of the way.',
             style: context.textStyles.bodyLarge?.copyWith(
-              color: isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF475569),
+              color: muted,
             ),
             textAlign: TextAlign.center,
           ),
@@ -312,6 +511,7 @@ class _WelcomePage extends StatelessWidget {
             onPressed: onNext,
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
             ),
             child: const Text('Get Started'),
           ),
@@ -330,6 +530,7 @@ class _ConnectPage extends StatelessWidget {
     required this.onRelationshipChanged,
     required this.onConnect,
     required this.loading,
+    required this.fieldDecoration,
     this.error,
   });
 
@@ -341,21 +542,23 @@ class _ConnectPage extends StatelessWidget {
   final VoidCallback onConnect;
   final bool loading;
   final String? error;
+  final InputDecoration Function({required String labelText, String? hintText, IconData? prefixIcon}) fieldDecoration;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = isDark ? Colors.white : Colors.black;
+    final muted = fg.withValues(alpha: 0.72);
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xxl),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: AppSpacing.xl),
           Text(
             'Connect to Patient',
             style: context.textStyles.displaySmall?.copyWith(
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
+              color: fg,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -363,7 +566,7 @@ class _ConnectPage extends StatelessWidget {
           Text(
             'Enter the patient code provided by your loved one or their care team.',
             style: context.textStyles.bodyLarge?.copyWith(
-              color: isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF475569),
+              color: muted,
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
@@ -397,11 +600,7 @@ class _ConnectPage extends StatelessWidget {
             controller: nameController,
             keyboardType: TextInputType.name,
             textCapitalization: TextCapitalization.words,
-            decoration: InputDecoration(
-              labelText: 'Your Name',
-              hintText: 'Enter your full name',
-              prefixIcon: Icon(Icons.person, color: cs.primary),
-            ),
+            decoration: fieldDecoration(labelText: 'Your Name', hintText: 'Enter your full name', prefixIcon: Icons.person),
           ),
           const SizedBox(height: AppSpacing.lg),
 
@@ -411,11 +610,7 @@ class _ConnectPage extends StatelessWidget {
             keyboardType: TextInputType.text,
             textCapitalization: TextCapitalization.characters,
             maxLength: 10,
-            decoration: InputDecoration(
-              labelText: 'Patient Code',
-              hintText: 'SDX-93F3B4',
-              prefixIcon: Icon(Icons.pin, color: cs.primary),
-            ),
+            decoration: fieldDecoration(labelText: 'Patient Code', hintText: 'SDX-93F3B4', prefixIcon: Icons.pin),
           ),
           const SizedBox(height: AppSpacing.lg),
 
@@ -423,17 +618,17 @@ class _ConnectPage extends StatelessWidget {
           Text(
             'Your Relationship',
             style: context.textStyles.labelLarge?.copyWith(
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
+              color: fg,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
           Container(
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF111827) : const Color(0xFFF1F5F9),
+              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.92),
               borderRadius: BorderRadius.circular(AppRadius.sm),
               border: Border.all(
-                color: isDark ? const Color(0xFF2A3441) : const Color(0xFFE5E7EB),
+                color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
                 width: 0.5,
               ),
             ),
@@ -442,8 +637,9 @@ class _ConnectPage extends StatelessWidget {
               value: selectedRelationship,
               isExpanded: true,
               underline: const SizedBox(),
-              dropdownColor: isDark ? const Color(0xFF1F2937) : Colors.white,
+              dropdownColor: isDark ? const Color(0xFF0B1220) : Colors.white,
               icon: Icon(Icons.arrow_drop_down, color: cs.primary),
+              style: context.textStyles.bodyMedium?.withColor(fg),
               items: relationships
                   .map((r) => DropdownMenuItem(value: r, child: Text(r)))
                   .toList(),
@@ -459,6 +655,7 @@ class _ConnectPage extends StatelessWidget {
             onPressed: loading ? null : onConnect,
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
             ),
             child: loading
                 ? const SizedBox(
@@ -482,8 +679,10 @@ class _PermissionsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = isDark ? Colors.white : Colors.black;
+    final muted = fg.withValues(alpha: 0.72);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xxl),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.lg),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -504,7 +703,7 @@ class _PermissionsPage extends StatelessWidget {
           Text(
             'Privacy & Permissions',
             style: context.textStyles.displaySmall?.copyWith(
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
+              color: fg,
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
@@ -513,7 +712,7 @@ class _PermissionsPage extends StatelessWidget {
           Text(
             'You\'ll only see information that the patient or care team has shared with family. Private patient-only information will remain hidden.',
             style: context.textStyles.bodyLarge?.copyWith(
-              color: isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF475569),
+              color: muted,
             ),
             textAlign: TextAlign.center,
           ),
@@ -522,6 +721,7 @@ class _PermissionsPage extends StatelessWidget {
             onPressed: onNext,
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
             ),
             child: const Text('Continue'),
           ),
@@ -546,8 +746,10 @@ class _TutorialPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = isDark ? Colors.white : Colors.black;
+    final muted = fg.withValues(alpha: 0.72);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xxl),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.lg),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -568,7 +770,7 @@ class _TutorialPage extends StatelessWidget {
           Text(
             'You\'re All Set!',
             style: context.textStyles.displaySmall?.copyWith(
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
+              color: fg,
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
@@ -577,7 +779,7 @@ class _TutorialPage extends StatelessWidget {
           Text(
             'Start exploring the family portal to support your loved one\'s recovery journey.',
             style: context.textStyles.bodyLarge?.copyWith(
-              color: isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF475569),
+              color: muted,
             ),
             textAlign: TextAlign.center,
           ),
@@ -611,6 +813,7 @@ class _TutorialPage extends StatelessWidget {
             onPressed: loading ? null : onComplete,
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
             ),
             child: loading
                 ? const SizedBox(

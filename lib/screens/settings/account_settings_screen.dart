@@ -51,6 +51,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   bool _medicationRemindersEnabled = true;
   bool _goalRemindersEnabled = true;
   bool _milestoneRemindersEnabled = true;
+
+  // Location permission is handled at the OS level (requested when features need it).
   
   // Section keys for scrolling
   final _profileKey = GlobalKey();
@@ -126,7 +128,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         _medicationRemindersEnabled = (user?.preferences['medicationRemindersEnabled'] as bool?) ?? true;
         _goalRemindersEnabled = (user?.preferences['goalRemindersEnabled'] as bool?) ?? true;
         _milestoneRemindersEnabled = (user?.preferences['milestoneRemindersEnabled'] as bool?) ?? true;
-        
+
         _loading = false;
       });
       
@@ -435,6 +437,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                     ),
                   ),
                   
+                  SizedBox(height: AppSpacing.xl),
+
                   SizedBox(height: AppSpacing.xl),
                   
                   // Family Connection Section

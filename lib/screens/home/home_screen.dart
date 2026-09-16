@@ -1565,7 +1565,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   0,
                                 ),
                                 child: _OnboardingReminderBanner(
-                                  onFinish: () => context.go('/onboarding'),
+                                  onFinish: () => context.go('/onboarding/questionnaire'),
                                 ),
                               ),
                             SizedBox(height: AppSpacing.sm),

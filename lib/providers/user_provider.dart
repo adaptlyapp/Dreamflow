@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 import 'package:wellspring/models/user.dart';
+import 'package:wellspring/services/notification_service.dart';
 import 'package:wellspring/services/user_service.dart';
 
 class UserProvider extends ChangeNotifier {
@@ -49,6 +50,15 @@ class UserProvider extends ChangeNotifier {
       } else {
         _currentUser = null;
       }
+
+      // Ensure this device only keeps scheduled local notifications relevant
+      // to the active portal (patient vs family).
+      try {
+        await NotificationService.instance
+            .setActiveRole(_currentUser?.role.value);
+      } catch (e) {
+        debugPrint('UserProvider.loadUser setActiveRole error: $e');
+      }
     } catch (e) {
       debugPrint('UserProvider.loadUser error: $e');
       _currentUser = null;
@@ -90,6 +100,13 @@ class UserProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // Cancel scheduled notifications from the prior session so the device
+    // doesn't keep reminding for an account that is no longer active.
+    try {
+      await NotificationService.instance.setActiveRole(null);
+    } catch (e) {
+      debugPrint('UserProvider.logout notification cleanup error: $e');
+    }
     await _userService.logout();
     _currentUser = null;
     notifyListeners();

@@ -20,7 +20,6 @@ import 'package:wellspring/screens/community/community_hub_screen.dart';
 import 'package:wellspring/screens/communities/community_detail_screen.dart';
 import 'package:wellspring/screens/home/home_screen.dart';
 import 'package:wellspring/screens/main_navigation.dart';
-import 'package:wellspring/screens/onboarding/welcome_screen.dart';
 import 'package:wellspring/screens/onboarding/hospital_picker_screen.dart';
 import 'package:wellspring/screens/auth/sign_in_screen.dart';
 import 'package:wellspring/screens/auth/sms_mfa_screen.dart';
@@ -443,6 +442,7 @@ debugPrint('[router] evaluate redirect: path=${state.uri.path} auth=${authUser?.
 final isAuthRoute = state.uri.path == '/auth';
 final isMfaRoute = state.uri.path == '/auth/mfa';
 final isOnboardingRoute = state.uri.path.startsWith('/onboarding');
+  final isWelcomeOnboardingRoute = state.uri.path == '/onboarding';
 
 // IMPORTANT: Get user first, THEN check onboarding
 // This ensures that if we provision a new profile (e.g., family), the onboarding check sees it
@@ -520,7 +520,7 @@ if (from != null && from.isNotEmpty) {
 return Uri.decodeComponent(from);
 }
 if (!isOnboardingCompleted) {
-return isFamilyUser ? '/family/onboarding' : '/onboarding';
+      return isFamilyUser ? '/family/onboarding' : '/onboarding/questionnaire';
 }
 return isFamilyUser ? '/family/dashboard' : '/';
 }
@@ -535,7 +535,7 @@ return '/auth/mfa?from=${Uri.encodeComponent(from)}';
 
 // If onboarding isn't done, jump into onboarding flow
 if (!isOnboardingCompleted) {
-return isFamilyUser ? '/family/onboarding' : '/onboarding';
+      return isFamilyUser ? '/family/onboarding' : '/onboarding/questionnaire';
 }
 final from = state.uri.queryParameters['from'];
 if (from != null && from.isNotEmpty) {
@@ -551,15 +551,21 @@ return '/auth/mfa?from=${Uri.encodeComponent(callbackTarget)}';
 }
 
 if (!isOnboardingCompleted) {
-return isFamilyUser ? '/family/onboarding' : '/onboarding';
+      return isFamilyUser ? '/family/onboarding' : '/onboarding/questionnaire';
 }
 return callbackTarget;
 }
 
+  // Backward compatibility: if anything still navigates to /onboarding,
+  // treat it as the questionnaire onboarding.
+  if (!isFamilyUser && isWelcomeOnboardingRoute) {
+    return '/onboarding/questionnaire';
+  }
+
 // Require onboarding completion after auth (use server flag with legacy-safe default)
 if (!isOnboardingCompleted && !isOnboardingRoute && !isFamilyOnboarding && !isMfaRoute) {
 debugPrint('[router] onboarding incomplete -> /onboarding or /family/onboarding');
-return isFamilyUser ? '/family/onboarding' : '/onboarding';
+    return isFamilyUser ? '/family/onboarding' : '/onboarding/questionnaire';
 }
 
 // Check if this is a shared route accessible by both patient and family users
@@ -628,10 +634,7 @@ return SmoothTransitionPage(child: PasswordResetScreen(uri: state.uri));
 ),
 GoRoute(
 path: '/onboarding',
-pageBuilder: (context, state) {
-AnalyticsService.instance.logScreenView('OnboardingWelcome');
-return SmoothTransitionPage(child: WelcomeScreen());
-},
+    redirect: (context, state) => '/onboarding/questionnaire',
 ),
 GoRoute(
 path: '/onboarding/hospital',
